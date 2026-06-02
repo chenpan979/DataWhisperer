@@ -1,0 +1,79 @@
+import json
+from typing import Any
+
+from app.core.config import Settings, get_settings
+
+
+class LLMClient:
+    """OpenAI-compatible 大模型客户端封装。
+
+    项目内部不要到处直接调用某个厂商 SDK，而是统一经过这个类。
+    只要外部模型服务兼容 OpenAI Chat Completions 协议，就可以通过
+    base_url、api_key、model 三个配置接入，例如 DashScope/Qwen、DeepSeek、
+    OpenAI 或公司内部模型网关。
+    """
+
+    def __init__(self, settings: Settings | None = None):
+        self.settings = settings or get_settings()
+        self._client = None
+        if self.settings.llm_enabled:
+            try:
+                from openai import AsyncOpenAI
+            except ImportError as exc:  # pragma: no cover - environment setup guard
+                raise RuntimeError(
+                    "The 'openai' package is required when LLM_API_KEY is configured. "
+                    "Install dependencies with: pip install -e ."
+                ) from exc
+            self._client = AsyncOpenAI(
+                api_key=self.settings.llm_api_key,
+                base_url=self.settings.llm_base_url,
+            )
+
+    @property
+    def enabled(self) -> bool:
+        """当前进程是否已经初始化远程大模型客户端。"""
+
+        return self._client is not None
+
+    async def complete_text(self, messages: list[dict[str, str]]) -> str | None:
+        """调用大模型并返回文本。
+
+        如果没有配置 API Key，则返回 None，让上层走本地演示规则。
+        """
+
+        if not self._client:
+            return None
+        response = await self._client.chat.completions.create(
+            model=self.settings.llm_model,
+            messages=messages,
+            temperature=self.settings.llm_temperature,
+        )
+        return response.choices[0].message.content or ""
+
+    async def complete_json(self, messages: list[dict[str, str]]) -> dict[str, Any] | None:
+        """调用大模型并尽量解析 JSON 对象。
+
+        模型有时会把 JSON 包在 Markdown 代码块里，或者前后带解释文字。
+        这里做一点容错，提升 Text-to-SQL 链路的稳定性。
+        """
+
+        text = await self.complete_text(messages)
+        if not text:
+            return None
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:].strip()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            start = text.find("{")
+            end = text.rfind("}")
+            if start >= 0 and end > start:
+                return json.loads(text[start : end + 1])
+            raise
+
+
+def get_llm_client() -> LLMClient:
+    return LLMClient()
