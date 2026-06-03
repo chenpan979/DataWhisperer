@@ -50,6 +50,18 @@ V3.3 的核心思想是：
 - 当 `METRIC_RETRIEVAL_PROVIDER=milvus` 时，优先走 Milvus 向量检索。
 - 当 Milvus 不可用且 `MILVUS_AUTO_FALLBACK=true` 时，自动回退到本地 hybrid 检索。
 
+### V3.4：DashScope Embedding 语义向量化
+
+V3.4 将指标向量化从本地 hashing 升级为 DashScope `text-embedding-v4`。
+
+核心变化：
+
+- 使用 `DASHSCOPE_API_KEY` 调用 OpenAI-compatible embeddings 接口。
+- 默认 embedding 模型为 `text-embedding-v4`。
+- 默认指标向量维度为 1024。
+- Milvus collection 的维度和 embedding 输出维度保持一致。
+- 没有配置 DashScope Key 时，可以通过 `EMBEDDING_AUTO_FALLBACK=true` 回退到本地 hashing。
+
 ## 指标库目录
 
 ```text
@@ -104,7 +116,7 @@ knowledge/
 hybrid_lexical_ngram_v1
 ```
 
-V3.3 接入 Milvus 后，检索模式可能为：
+V3.3/V3.4 接入 Milvus 后，检索模式可能为：
 
 ```text
 milvus_vector_v1
@@ -118,7 +130,7 @@ hybrid_lexical_ngram_v1
 
 ## Milvus 索引同步
 
-V3.3 新增：
+V3.3/V3.4 相关文件：
 
 ```text
 app/rag/embeddings.py
@@ -131,7 +143,7 @@ app/rag/milvus_sync.py
 
 ```text
 读取 knowledge/metrics/*.md
-  -> 使用 HashingTextEmbedder 生成固定维度向量
+  -> 使用 DashScope text-embedding-v4 生成固定维度向量
   -> 重建 Milvus collection
   -> 写入指标名称、别名、关键词、正文和向量
 ```
@@ -144,11 +156,23 @@ docker-compose up -d etcd minio milvus
 python -m app.rag.milvus_sync
 ```
 
-V3.3 暂时使用本地 hashing 向量化器，原因是：
+V3.4 推荐环境变量：
 
-- 不依赖外部 embedding 服务，方便本地开发和 GitHub 复现。
-- 可以先把 Milvus 索引、同步、检索、兜底链路打通。
-- 后续替换成真实 embedding 模型时，只需要替换向量化器，不需要改主控流程。
+```env
+DASHSCOPE_API_KEY=你的 DashScope API Key
+DASHSCOPE_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+DASHSCOPE_MODEL=qwen-plus
+DASHSCOPE_EMBEDDING_MODEL=text-embedding-v4
+DASHSCOPE_EMBEDDING_DIMENSION=1024
+EMBEDDING_PROVIDER=dashscope
+METRIC_RETRIEVAL_PROVIDER=milvus
+```
+
+本地 hashing 向量化器仍然保留，原因是：
+
+- 没有 API Key 时，项目仍然可以跑基础测试和演示。
+- Milvus 或 embedding 服务不可用时，系统可以回退到本地检索。
+- 后续替换成其他 embedding 模型时，只需要替换向量化器工厂，不需要改主控流程。
 
 ## Prompt 注入
 
@@ -206,19 +230,19 @@ python -m app.evals.metric_retrieval
 
 ## 当前限制
 
-V3.3 已经接入 Milvus，但仍然有几个刻意保留的工程边界：
+V3.4 已经接入 DashScope Embedding 和 Milvus，但仍然有几个刻意保留的工程边界：
 
-- 当前 embedding 使用本地 hashing 向量化器，不是真正的深度语义向量模型。
 - Milvus 指标索引采用全量重建，适合小规模指标库和演示，后续可升级为增量 upsert。
 - Milvus 检索只用于业务指标口径，暂未扩展到报表样例、SQL 案例库或企业数据字典。
+- 当前没有缓存远程 embedding 调用结果，后续可按指标文件 hash 做缓存和增量同步。
 - 本地 hybrid 检索仍然保留，作为 Milvus 不可用时的稳定兜底。
 
 ## 下一步
 
-V3.4 或 V4 前可以继续增强：
+V3.5 或 V4 前可以继续增强：
 
-- 使用 Qwen Embedding、OpenAI Embedding 或 bge-m3 替换本地 hashing 向量化器。
 - 增加指标索引增量同步和索引版本号。
+- 增加 embedding 缓存，避免重复调用远程模型。
 - 增加指标冲突检测。
 - 增加“未命中指标”的用户提示。
 - 将指标检索工具包装成 MCP 工具。

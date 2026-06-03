@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from app.core.config import get_settings
-from app.rag.embeddings import HashingTextEmbedder
+from app.rag.embeddings import TextEmbedder, create_text_embedder
 from app.rag.metric_retriever import MetricDefinition, MetricRetriever
 from app.rag.milvus_metric_store import MilvusMetricDocument, MilvusMetricStore
 
 
 def build_metric_documents(
     metrics: list[MetricDefinition],
-    embedder: HashingTextEmbedder,
+    embedder: TextEmbedder,
 ) -> list[MilvusMetricDocument]:
     """把本地指标定义转换成可写入 Milvus 的文档。"""
 
@@ -31,12 +31,12 @@ def sync_metrics_to_milvus() -> int:
     """同步本地指标库到 Milvus，返回写入的指标数量。"""
 
     settings = get_settings()
-    embedder = HashingTextEmbedder(dimension=settings.milvus_embedding_dim)
+    embedder = create_text_embedder(settings)
     local_retriever = MetricRetriever()
     store = MilvusMetricStore(
         uri=settings.milvus_uri,
         collection_name=settings.milvus_metric_collection,
-        dimension=settings.milvus_embedding_dim,
+        dimension=settings.metric_embedding_dimension,
     )
 
     documents = build_metric_documents(local_retriever.load_metrics(), embedder)

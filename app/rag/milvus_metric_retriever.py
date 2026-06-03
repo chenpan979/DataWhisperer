@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.rag.embeddings import HashingTextEmbedder
+from app.rag.embeddings import TextEmbedder
 from app.rag.metric_retriever import (
     MetricDefinition,
     MetricRetrievalResult,
@@ -24,7 +24,7 @@ class MilvusMetricRetriever:
         self,
         *,
         store: MilvusMetricStore,
-        embedder: HashingTextEmbedder,
+        embedder: TextEmbedder,
         fallback_retriever: MetricRetriever,
         auto_fallback: bool = True,
     ):

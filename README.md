@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.3：Milvus 向量数据库指标检索版本**。
+当前项目已经更新到 **V3.4：DashScope Embedding + Milvus 指标检索版本**。
 
 版本入口：
 
@@ -12,6 +12,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.1.0`：升级为混合指标检索，结合关键词/别名命中和轻量 n-gram 相似度。
 - `v3.2.0`：新增指标检索评测集，验证问题是否命中正确业务指标。
 - `v3.3.0`：接入 Milvus 向量数据库作为指标检索层，并保留本地检索自动兜底。
+- `v3.4.0`：将指标向量化升级为 DashScope `text-embedding-v4`，Milvus 索引使用真实语义向量。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -35,6 +36,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.2 增加指标检索评测集，检查指标召回是否正确、是否误召回禁止指标。
 - V3.3 增加 Milvus 向量数据库检索层，指标 Markdown 仍作为知识源，Milvus 作为可重建索引。
 - Milvus 未启动、未安装客户端或索引未同步时，系统可自动回退到本地 hybrid 检索，避免演示环境阻塞。
+- V3.4 使用 DashScope `text-embedding-v4` 生成指标向量，hashing 向量化器保留为本地兜底。
 
 ## 技术栈
 
@@ -42,6 +44,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - 数据库：MySQL 8
 - 向量数据库：Milvus standalone
 - 大模型：OpenAI-compatible Chat Completions，默认 DashScope/Qwen
+- Embedding：DashScope `text-embedding-v4`
 - 前端：FastAPI StaticFiles、原生 HTML/CSS/JavaScript、ECharts
 - 测试：pytest、ruff
 - 部署辅助：Docker Compose
@@ -145,9 +148,11 @@ notepad .env
 DashScope/Qwen 示例配置：
 
 ```env
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_MODEL=qwen-plus
-LLM_API_KEY=你的 DashScope API Key
+DASHSCOPE_API_KEY=你的 DashScope API Key
+DASHSCOPE_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+DASHSCOPE_MODEL=qwen-plus
+DASHSCOPE_EMBEDDING_MODEL=text-embedding-v4
+DASHSCOPE_EMBEDDING_DIMENSION=1024
 ```
 
 说明：
@@ -155,6 +160,7 @@ LLM_API_KEY=你的 DashScope API Key
 - `.env.example` 是模板文件，可以提交到 GitHub。
 - `.env` 是本地真实配置文件，已经加入 `.gitignore`。
 - 不要把真实 API Key 提交到 GitHub。
+- V3.4 后聊天模型和 embedding 默认都可以复用 `DASHSCOPE_API_KEY`。
 
 ### 3. 启动 MySQL 示例库
 
@@ -187,7 +193,7 @@ volumes/mysql/
 ### 4. 可选：启动 Milvus 指标向量库
 
 默认情况下项目使用本地 hybrid 指标检索，可以直接运行。
-如果想演示 V3.3 的 Milvus 向量检索能力，可以启动 Milvus 并同步指标索引：
+如果想演示 V3.4 的 Milvus + DashScope Embedding 向量检索能力，可以启动 Milvus 并同步指标索引：
 
 ```powershell
 pip install -e ".[milvus]"
@@ -199,6 +205,9 @@ python -m app.rag.milvus_sync
 
 ```env
 METRIC_RETRIEVAL_PROVIDER=milvus
+EMBEDDING_PROVIDER=dashscope
+DASHSCOPE_EMBEDDING_MODEL=text-embedding-v4
+DASHSCOPE_EMBEDDING_DIMENSION=1024
 MILVUS_URI=http://127.0.0.1:19530
 MILVUS_METRIC_COLLECTION=datawhisperer_metrics
 MILVUS_AUTO_FALLBACK=true
@@ -208,6 +217,7 @@ MILVUS_AUTO_FALLBACK=true
 
 - `knowledge/metrics/*.md` 仍然是指标口径的唯一知识源。
 - Milvus 只保存可重建的向量索引，不保存不可恢复的业务配置。
+- V3.4 使用 `text-embedding-v4` 生成 1024 维指标向量，旧的 128 维 hashing 索引需要重新同步。
 - `MILVUS_AUTO_FALLBACK=true` 时，Milvus 不可用会自动回退到本地检索。
 
 ### 5. 启动后端服务
@@ -317,7 +327,7 @@ ruff check .
 - Text-to-SQL 基础评测集
 - RAG 指标口径检索
 - 指标检索评测集
-- V3.3 hashing 向量化器
+- V3.4 DashScope embedding 客户端和 hashing 本地兜底
 - Milvus 指标检索命中与本地检索兜底
 - Milvus 指标文档同步构造
 
@@ -346,7 +356,7 @@ pass_rate: 1.0
 
 可以用下面这段作为 1 分钟项目介绍：
 
-> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.1/V3.2 补充混合检索和指标评测，V3.3 接入 Milvus 向量数据库并保留本地检索兜底，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标、具备向量检索基础设施”的大模型工程项目。
+> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.1/V3.2 补充混合检索和指标评测，V3.3 接入 Milvus 向量数据库，V3.4 使用 DashScope text-embedding-v4 生成真实语义向量，并保留本地检索兜底，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标、具备向量检索基础设施”的大模型工程项目。
 
 更多讲解内容见：[docs/interview-guide.md](docs/interview-guide.md)。
 
@@ -411,6 +421,7 @@ uvicorn app.main:app --reload --port 8081
 - V3.1：混合指标检索，结合关键词/别名命中和轻量 n-gram 相似度。
 - V3.2：指标检索评测集，验证指标召回、误召回和报告输出。
 - V3.3：Milvus 向量数据库检索层，支持指标向量索引同步和本地检索兜底。
+- V3.4：DashScope `text-embedding-v4` 指标向量化，Milvus 使用真实语义向量检索。
 - V4：MCP 工具化，把数据库查询、图表生成、导出能力包装成工具。
 - V5：多智能体拆分，引入 Schema Analyst、SQL Engineer、Chart Designer、Report Writer。
 - V6：评测体系增强，增加真实 LLM 评测、SQL 正确率、修复成功率和分析结论质量评估。

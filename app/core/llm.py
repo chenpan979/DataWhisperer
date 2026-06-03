@@ -25,8 +25,8 @@ class LLMClient:
                     "Install dependencies with: pip install -e ."
                 ) from exc
             self._client = AsyncOpenAI(
-                api_key=self.settings.llm_api_key,
-                base_url=self.settings.llm_base_url,
+                api_key=self.settings.effective_llm_api_key,
+                base_url=self.settings.effective_llm_base_url,
             )
 
     @property
@@ -44,7 +44,7 @@ class LLMClient:
         if not self._client:
             return None
         response = await self._client.chat.completions.create(
-            model=self.settings.llm_model,
+            model=self.settings.effective_llm_model,
             messages=messages,
             temperature=self.settings.llm_temperature,
         )

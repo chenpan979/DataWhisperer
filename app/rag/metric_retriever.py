@@ -238,7 +238,7 @@ def get_metric_retriever():
     if settings.metric_retrieval_provider.casefold() != "milvus":
         return local_retriever
 
-    from app.rag.embeddings import HashingTextEmbedder
+    from app.rag.embeddings import create_text_embedder
     from app.rag.milvus_metric_retriever import MilvusMetricRetriever
     from app.rag.milvus_metric_store import MilvusMetricStore
 
@@ -246,9 +246,9 @@ def get_metric_retriever():
         store=MilvusMetricStore(
             uri=settings.milvus_uri,
             collection_name=settings.milvus_metric_collection,
-            dimension=settings.milvus_embedding_dim,
+            dimension=settings.metric_embedding_dimension,
         ),
-        embedder=HashingTextEmbedder(dimension=settings.milvus_embedding_dim),
+        embedder=create_text_embedder(settings),
         fallback_retriever=local_retriever,
         auto_fallback=settings.milvus_auto_fallback,
     )
