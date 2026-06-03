@@ -12,11 +12,19 @@ class FakeEmbeddingEndpoint:
     def __init__(self) -> None:
         self.request = {}
 
-    def create(self, *, model: str, input: list[str], dimensions: int):
+    def create(
+        self,
+        *,
+        model: str,
+        input: list[str],
+        dimensions: int,
+        encoding_format: str,
+    ):
         self.request = {
             "model": model,
             "input": input,
             "dimensions": dimensions,
+            "encoding_format": encoding_format,
         }
         return SimpleNamespace(
             data=[
@@ -47,6 +55,7 @@ def test_dashscope_embedder_calls_openai_compatible_embeddings_api() -> None:
         "model": "text-embedding-v4",
         "input": ["GMV 趋势", "客单价最高的地区"],
         "dimensions": 1024,
+        "encoding_format": "float",
     }
     assert vectors == [[0.6, 0.8], [0.0, 1.0]]
 

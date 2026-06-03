@@ -126,6 +126,7 @@ class DashScopeTextEmbedder:
             model=self.model,
             input=texts,
             dimensions=self.dimension,
+            encoding_format="float",
         )
         vectors = [item.embedding for item in response.data]
         return [_normalize_vector(vector) for vector in vectors]
