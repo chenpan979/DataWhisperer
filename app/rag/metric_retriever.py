@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from app.core.config import get_settings
+
 
 NO_METRIC_CONTEXT = "未检索到相关业务指标口径。"
 
@@ -223,7 +225,30 @@ def _cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
 
 
 @lru_cache
-def get_metric_retriever() -> MetricRetriever:
-    """返回进程内复用的指标检索器。"""
+def get_metric_retriever():
+    """返回进程内复用的指标检索器。
 
-    return MetricRetriever()
+    默认使用本地 hybrid 检索，保证项目开箱可跑。
+    当 `.env` 中把 `METRIC_RETRIEVAL_PROVIDER` 设置为 `milvus` 时，
+    会优先走 Milvus 向量检索，并在 Milvus 不可用时自动回退到本地检索。
+    """
+
+    settings = get_settings()
+    local_retriever = MetricRetriever()
+    if settings.metric_retrieval_provider.casefold() != "milvus":
+        return local_retriever
+
+    from app.rag.embeddings import HashingTextEmbedder
+    from app.rag.milvus_metric_retriever import MilvusMetricRetriever
+    from app.rag.milvus_metric_store import MilvusMetricStore
+
+    return MilvusMetricRetriever(
+        store=MilvusMetricStore(
+            uri=settings.milvus_uri,
+            collection_name=settings.milvus_metric_collection,
+            dimension=settings.milvus_embedding_dim,
+        ),
+        embedder=HashingTextEmbedder(dimension=settings.milvus_embedding_dim),
+        fallback_retriever=local_retriever,
+        auto_fallback=settings.milvus_auto_fallback,
+    )

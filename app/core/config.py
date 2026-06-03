@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     llm_model: str = "qwen-plus"
     llm_temperature: float = 0.1
 
+    metric_retrieval_provider: str = "local"
+    milvus_uri: str = "http://127.0.0.1:19530"
+    milvus_metric_collection: str = "datawhisperer_metrics"
+    milvus_embedding_dim: int = 128
+    milvus_auto_fallback: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property

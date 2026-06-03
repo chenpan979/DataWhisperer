@@ -38,6 +38,18 @@ V3 开始补业务知识：
 - 检索报告是否可序列化。
 - 混合检索是否覆盖同义表达。
 
+### V3.3：Milvus 向量数据库检索层
+
+新增 Milvus standalone 部署配置、指标向量化器、Milvus 指标索引同步脚本和可回退检索器。
+
+V3.3 的核心思想是：
+
+- `knowledge/metrics/*.md` 仍然是指标口径知识源。
+- Milvus 只作为可重建的向量索引层。
+- 默认仍然使用本地 hybrid 检索，保证项目开箱可跑。
+- 当 `METRIC_RETRIEVAL_PROVIDER=milvus` 时，优先走 Milvus 向量检索。
+- 当 Milvus 不可用且 `MILVUS_AUTO_FALLBACK=true` 时，自动回退到本地 hybrid 检索。
+
 ## 指标库目录
 
 ```text
@@ -91,6 +103,52 @@ knowledge/
 ```text
 hybrid_lexical_ngram_v1
 ```
+
+V3.3 接入 Milvus 后，检索模式可能为：
+
+```text
+milvus_vector_v1
+```
+
+如果 Milvus 不可用并触发兜底，检索模式仍会回到：
+
+```text
+hybrid_lexical_ngram_v1
+```
+
+## Milvus 索引同步
+
+V3.3 新增：
+
+```text
+app/rag/embeddings.py
+app/rag/milvus_metric_store.py
+app/rag/milvus_metric_retriever.py
+app/rag/milvus_sync.py
+```
+
+同步流程：
+
+```text
+读取 knowledge/metrics/*.md
+  -> 使用 HashingTextEmbedder 生成固定维度向量
+  -> 重建 Milvus collection
+  -> 写入指标名称、别名、关键词、正文和向量
+```
+
+运行方式：
+
+```powershell
+pip install -e ".[milvus]"
+docker-compose up -d etcd minio milvus
+python -m app.rag.milvus_sync
+```
+
+V3.3 暂时使用本地 hashing 向量化器，原因是：
+
+- 不依赖外部 embedding 服务，方便本地开发和 GitHub 复现。
+- 可以先把 Milvus 索引、同步、检索、兜底链路打通。
+- 后续替换成真实 embedding 模型时，只需要替换向量化器，不需要改主控流程。
 
 ## Prompt 注入
 
@@ -148,18 +206,19 @@ python -m app.evals.metric_retrieval
 
 ## 当前限制
 
-V3.1 仍然不接外部向量数据库，原因是：
+V3.3 已经接入 Milvus，但仍然有几个刻意保留的工程边界：
 
-- 本地指标库更容易理解和维护。
-- 不需要额外部署 Chroma、FAISS、Milvus。
-- 先验证 RAG 是否真的能提升 Text-to-SQL 的业务理解。
-- 后续升级 embedding 检索时，主控流程不用大改。
+- 当前 embedding 使用本地 hashing 向量化器，不是真正的深度语义向量模型。
+- Milvus 指标索引采用全量重建，适合小规模指标库和演示，后续可升级为增量 upsert。
+- Milvus 检索只用于业务指标口径，暂未扩展到报表样例、SQL 案例库或企业数据字典。
+- 本地 hybrid 检索仍然保留，作为 Milvus 不可用时的稳定兜底。
 
 ## 下一步
 
-V3.3 或 V4 前可以继续增强：
+V3.4 或 V4 前可以继续增强：
 
-- 使用真实 embedding 模型替换 n-gram 相似度。
+- 使用 Qwen Embedding、OpenAI Embedding 或 bge-m3 替换本地 hashing 向量化器。
+- 增加指标索引增量同步和索引版本号。
 - 增加指标冲突检测。
 - 增加“未命中指标”的用户提示。
 - 将指标检索工具包装成 MCP 工具。
