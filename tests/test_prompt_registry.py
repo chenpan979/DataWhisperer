@@ -10,15 +10,17 @@ def test_prompt_registry_renders_sql_generation_messages() -> None:
         "sql_generation",
         variables={
             "schema_prompt": "Table orders(order_id, order_date)",
+            "metric_context": "订单数 = COUNT(DISTINCT orders.order_id)",
             "question": "查询订单数量",
         },
     )
 
     assert rendered.prompt_id == "sql_generation"
     assert rendered.version == DEFAULT_PROMPT_VERSION
-    assert rendered.variables == ("question", "schema_prompt")
+    assert rendered.variables == ("metric_context", "question", "schema_prompt")
     assert [message["role"] for message in rendered.messages] == ["system", "user"]
     assert "Table orders(order_id, order_date)" in rendered.messages[1]["content"]
+    assert "订单数 = COUNT(DISTINCT orders.order_id)" in rendered.messages[1]["content"]
     assert "查询订单数量" in rendered.messages[1]["content"]
 
 

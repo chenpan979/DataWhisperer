@@ -30,6 +30,7 @@ async def test_generate_sql_uses_versioned_prompt_template() -> None:
         question="Please calculate weekday revenue.",
         schema_prompt="Table orders(order_id, order_date)",
         llm=llm,
+        metric_context="销售额 = SUM(order_items.quantity * order_items.unit_price)",
     )
 
     assert generated.sql == "SELECT 1 AS value"
@@ -38,6 +39,7 @@ async def test_generate_sql_uses_versioned_prompt_template() -> None:
     assert llm.messages[0]["role"] == "system"
     assert "只返回严格 JSON" in llm.messages[0]["content"]
     assert "Table orders(order_id, order_date)" in llm.messages[1]["content"]
+    assert "销售额 = SUM(order_items.quantity * order_items.unit_price)" in llm.messages[1]["content"]
 
 
 @pytest.mark.asyncio
@@ -50,6 +52,7 @@ async def test_repair_sql_uses_versioned_prompt_template() -> None:
         failed_sql="SELECT missing_column FROM orders",
         error_message="Unknown column 'missing_column'",
         llm=llm,
+        metric_context="订单数 = COUNT(DISTINCT orders.order_id)",
     )
 
     assert repaired is not None
@@ -58,6 +61,7 @@ async def test_repair_sql_uses_versioned_prompt_template() -> None:
     assert repaired.prompt_version == "v1"
     assert "修复失败的 MySQL 只读查询" in llm.messages[0]["content"]
     assert "Unknown column 'missing_column'" in llm.messages[1]["content"]
+    assert "订单数 = COUNT(DISTINCT orders.order_id)" in llm.messages[1]["content"]
 
 
 @pytest.mark.asyncio

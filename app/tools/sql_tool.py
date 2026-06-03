@@ -92,6 +92,7 @@ async def generate_sql(
     question: str,
     schema_prompt: str,
     llm: Any,
+    metric_context: str = "未检索到相关业务指标口径。",
     prompt_registry: PromptRegistry | None = None,
     prompt_version: str = DEFAULT_PROMPT_VERSION,
 ) -> GeneratedSQL:
@@ -107,6 +108,7 @@ async def generate_sql(
         version=prompt_version,
         variables={
             "schema_prompt": schema_prompt,
+            "metric_context": metric_context,
             "question": question,
         },
     )
@@ -130,6 +132,7 @@ async def repair_sql(
     failed_sql: str,
     error_message: str,
     llm: Any,
+    metric_context: str = "未检索到相关业务指标口径。",
     prompt_registry: PromptRegistry | None = None,
     prompt_version: str = DEFAULT_PROMPT_VERSION,
 ) -> GeneratedSQL | None:
@@ -146,6 +149,7 @@ async def repair_sql(
         version=prompt_version,
         variables={
             "schema_prompt": schema_prompt,
+            "metric_context": metric_context,
             "question": question,
             "failed_sql": failed_sql,
             "error_message": error_message,

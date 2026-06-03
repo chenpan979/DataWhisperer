@@ -57,7 +57,11 @@ class QueryResponse(BaseModel):
         default_factory=dict,
         description="Prompt versions used in this request, for example sql_generation=v1.",
     )
+    retrieved_metrics: list[str] = Field(
+        default_factory=list,
+        description="Business metric definitions retrieved for this request.",
+    )
     repair_count: int = Field(
         default=0,
-        description="How many SQL repair attempts were used. V2 first step keeps it at 0.",
+        description="How many SQL repair attempts were used.",
     )

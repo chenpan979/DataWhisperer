@@ -33,6 +33,7 @@ async def test_orchestrator_repairs_failed_sql_once(monkeypatch: pytest.MonkeyPa
         await orchestrator._execute_with_optional_repair(
             question="查询订单数量",
             schema_prompt="Table orders(order_id)",
+            metric_context="订单数 = COUNT(DISTINCT orders.order_id)",
             generated=GeneratedSQL(
                 sql="SELECT missing_column FROM orders",
                 explanation="查询订单数量。",

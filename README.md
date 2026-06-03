@@ -2,14 +2,15 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V2：PromptOps 提示词治理与 SQL 自修复版本**。
+当前项目已经更新到 **V3：RAG 指标口径库版本**。
 
 版本入口：
 
 - `v1.0.0`：Text-to-SQL MVP，跑通自然语言查数、SQL 安全校验、查询执行、图表和分析结论。
 - `v2.0.0`：引入 PromptOps、SQL 自动修复和基础评测集，使系统具备更强的可治理、可追踪和可评测能力。
+- `v3.0.0`：引入本地指标口径库和轻量检索，将 GMV、销售额、客单价、订单数、复购率等业务定义注入 SQL 生成 prompt。
 
-项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 开始补充大模型工程化能力，后续会继续扩展 RAG 指标知识库、MCP 工具化和多智能体协作。
+项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
 ## 项目亮点
 
@@ -24,6 +25,9 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V2 引入 PromptOps，将 SQL 生成、SQL 修复、分析总结、图表推荐 prompt 拆成版本化模板。
 - SQL 校验失败或数据库执行失败时，系统最多自动修复 1 次，并记录 `repair_count`。
 - 内置基础 Text-to-SQL 评测集，可快速检查 SQL 安全、关键 SQL 片段和图表推荐是否退化。
+- V3 引入本地指标口径库，支持 GMV、销售额、客单价、订单数、复购率等业务指标检索。
+- SQL 生成和 SQL 修复 prompt 会注入检索到的指标口径，让模型按业务定义生成 SQL。
+- API 返回 `retrieved_metrics`，方便追踪本次问题参考了哪些业务指标定义。
 
 ## 技术栈
 
@@ -41,6 +45,7 @@ flowchart TD
     U["用户中文问题"] --> API["FastAPI: POST /api/chat/query"]
     API --> O["DataAnalysisOrchestrator"]
     O --> S["Schema Tool: 读取表结构"]
+    O --> M["Metric Retriever: 检索业务指标口径"]
     O --> P["PromptRegistry: 读取版本化提示词"]
     O --> SQL["SQL Tool: 生成并校验 SQL"]
     O --> RPAIR["SQL Repair: 失败后自动修复"]
@@ -48,6 +53,7 @@ flowchart TD
     O --> C["Chart Tool: 推荐图表"]
     O --> I["Insight Tool: 生成业务结论"]
     S --> R["统一响应"]
+    M --> SQL
     P --> SQL
     SQL --> R
     RPAIR --> R
@@ -65,6 +71,7 @@ flowchart TD
 - Prompt 不是安全边界，SQL 安全必须由服务端代码兜底。
 - 返回 `trace_steps`，方便调试和向面试官解释每一步发生了什么。
 - 返回 `prompt_versions` 和 `repair_count`，用于追踪本次请求使用的提示词版本和 SQL 修复次数。
+- 返回 `retrieved_metrics`，用于追踪本次请求检索到的业务指标口径。
 
 ## 目录结构
 
@@ -75,14 +82,18 @@ app/
   core/         配置、数据库、大模型客户端
   evals/        Text-to-SQL 评测 runner
   models/       Pydantic 请求/响应模型
+  rag/          指标口径检索工具
   tools/        Schema、SQL、查询、图表、分析工具
 docs/
   architecture.md       架构说明
   interview-guide.md    面试讲解稿
   v1-release-notes.md   v1 发布说明
   v2-promptops-design.md V2 PromptOps 设计说明
+  v3-rag-metrics-design.md V3 RAG 指标口径库设计说明
 evals/
   text_to_sql_cases.json 基础 Text-to-SQL 评测集
+knowledge/
+  metrics/              GMV、销售额、客单价、订单数、复购率等指标口径
 prompts/
   sql_generation/       SQL 生成提示词模板
   sql_repair/           SQL 修复提示词模板
@@ -214,6 +225,7 @@ uvicorn app.main:app --reload --port 8081
 - `warnings`：风险提示或兜底说明。
 - `trace_steps`：Agent 执行轨迹。
 - `prompt_versions`：本次请求使用过的 prompt 版本。
+- `retrieved_metrics`：本次请求检索到的业务指标口径。
 - `repair_count`：SQL 自动修复次数。
 
 ## 示例问题
@@ -266,6 +278,7 @@ ruff check .
 - PromptRegistry 提示词模板渲染
 - SQL 自动修复链路
 - Text-to-SQL 基础评测集
+- RAG 指标口径检索
 
 运行基础评测：
 
@@ -286,7 +299,7 @@ pass_rate: 1.0
 
 可以用下面这段作为 1 分钟项目介绍：
 
-> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，调用大模型生成查询 SQL，再由服务端安全层校验，只允许只读查询，最后执行 SQL 并返回表格、图表配置和业务分析结论。V2 引入了 PromptOps 提示词版本化、SQL 失败自修复和基础评测集，使系统从“能跑通”进一步升级为“可治理、可追踪、可评测”的大模型工程项目。
+> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，使系统从“能跑通”进一步升级为“可治理、可追踪、可评测、能理解业务指标”的大模型工程项目。
 
 更多讲解内容见：[docs/interview-guide.md](docs/interview-guide.md)。
 
@@ -340,7 +353,7 @@ uvicorn app.main:app --reload --port 8081
 
 - V1：Text-to-SQL MVP，跑通自然语言查数闭环。
 - V2：PromptOps 提示词治理、SQL 自动修复、基础 Text-to-SQL 评测集。
-- V3：RAG 指标口径库，支持 GMV、客单价、复购率等业务定义检索。
+- V3：RAG 指标口径库，支持 GMV、客单价、复购率等业务定义检索和 prompt 注入。
 - V4：MCP 工具化，把数据库查询、图表生成、导出能力包装成工具。
 - V5：多智能体拆分，引入 Schema Analyst、SQL Engineer、Chart Designer、Report Writer。
 - V6：评测体系增强，增加真实 LLM 评测、SQL 正确率、修复成功率和分析结论质量评估。

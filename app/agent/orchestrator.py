@@ -3,6 +3,7 @@ from sqlalchemy.engine import Engine
 from app.core.config import get_settings
 from app.core.llm import LLMClient
 from app.models.query import QueryRequest, QueryResponse, TraceStep
+from app.rag.metric_retriever import get_metric_retriever
 from app.tools.chart_tool import recommend_chart
 from app.tools.insight_tool import generate_insight
 from app.tools.query_tool import execute_safe_query
@@ -34,6 +35,7 @@ class DataAnalysisOrchestrator:
         *,
         question: str,
         schema_prompt: str,
+        metric_context: str,
         generated: GeneratedSQL,
         max_rows: int,
         trace: list[TraceStep],
@@ -64,6 +66,7 @@ class DataAnalysisOrchestrator:
             repaired = await repair_sql(
                 question=question,
                 schema_prompt=schema_prompt,
+                metric_context=metric_context,
                 failed_sql=generated.sql,
                 error_message=error_message,
                 llm=self.llm,
@@ -100,10 +103,30 @@ class DataAnalysisOrchestrator:
         schema_prompt = schema_to_prompt(schema)
         trace.append(TraceStep(name="schema", status="ok", detail=f"{schema['table_count']} tables"))
 
+        # V3.0：检索业务指标口径，并注入 SQL 生成 prompt。
+        # 这一步是 RAG 的基础形态：先从本地知识库找相关指标，再让模型带着口径写 SQL。
+        metric_retrieval = get_metric_retriever().retrieve(request.question)
+        trace.append(
+            TraceStep(
+                name="metric_retrieval",
+                status="ok",
+                detail=(
+                    ", ".join(metric_retrieval.names)
+                    if metric_retrieval.names
+                    else "未命中业务指标口径"
+                ),
+            )
+        )
+
         # 第二步：生成 SQL。
         # 命中内置示例问题时优先走稳定规则；自由问题则交给大模型生成。
         # 这样既保证演示问题稳定，又保留真实 Text-to-SQL 能力。
-        generated = await generate_sql(request.question, schema_prompt, self.llm)
+        generated = await generate_sql(
+            request.question,
+            schema_prompt,
+            self.llm,
+            metric_context=metric_retrieval.prompt_context,
+        )
         if generated.used_fallback:
             warnings.append("当前 SQL 由本地演示规则生成，用于保证示例问题稳定可运行。")
         if generated.prompt_id and generated.prompt_version:
@@ -122,6 +145,7 @@ class DataAnalysisOrchestrator:
             await self._execute_with_optional_repair(
                 question=request.question,
                 schema_prompt=schema_prompt,
+                metric_context=metric_retrieval.prompt_context,
                 generated=generated,
                 max_rows=max_rows,
                 trace=trace,
@@ -161,5 +185,6 @@ class DataAnalysisOrchestrator:
             warnings=warnings,
             trace_steps=trace,
             prompt_versions=prompt_versions,
+            retrieved_metrics=metric_retrieval.names,
             repair_count=repair_count,
         )
