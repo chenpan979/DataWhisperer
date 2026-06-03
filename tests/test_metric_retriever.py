@@ -5,6 +5,8 @@ def test_metric_retriever_finds_gmv_definition() -> None:
     result = get_metric_retriever().retrieve("最近 6 个月 GMV 趋势")
 
     assert result.names[0] == "GMV"
+    assert result.retrieval_mode == "hybrid_lexical_ngram_v1"
+    assert result.metrics[0].score > 0
     assert "SUM(order_items.quantity * order_items.unit_price)" in result.prompt_context
 
 
@@ -13,6 +15,13 @@ def test_metric_retriever_finds_avg_order_value_definition() -> None:
 
     assert "客单价" in result.names
     assert "COUNT(DISTINCT orders.order_id)" in result.prompt_context
+
+
+def test_metric_retriever_uses_semantic_overlap_for_related_expression() -> None:
+    result = get_metric_retriever().retrieve("比较不同地区平均每单消费水平", min_score=0.2)
+
+    assert "客单价" in result.names
+    assert "hybrid_lexical_ngram_v1" in result.prompt_context
 
 
 def test_metric_retriever_finds_repurchase_rate_definition() -> None:

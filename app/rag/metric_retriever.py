@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import math
+import re
+from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+
+NO_METRIC_CONTEXT = "未检索到相关业务指标口径。"
 
 
 @dataclass(frozen=True)
 class MetricDefinition:
     """业务指标定义。
 
-    当前 V3.0 先使用本地 Markdown 指标库，不接向量数据库。
-    每个指标文件包含名称、别名、关键词和完整口径说明。
+    V3.0 使用本地 Markdown 指标库。
+    V3.1 在此基础上加入轻量语义相似度检索，形成 hybrid retrieval。
     """
 
     name: str
@@ -19,13 +25,21 @@ class MetricDefinition:
     keywords: tuple[str, ...]
     content: str
 
+    @property
+    def search_text(self) -> str:
+        """用于相似度检索的指标文本。"""
+
+        return " ".join([self.name, *self.aliases, *self.keywords, self.content])
+
 
 @dataclass(frozen=True)
 class RetrievedMetric:
     """一次检索命中的指标。"""
 
     metric: MetricDefinition
-    score: int
+    score: float
+    lexical_score: int
+    semantic_score: float
     matched_terms: tuple[str, ...]
 
 
@@ -35,6 +49,7 @@ class MetricRetrievalResult:
 
     metrics: tuple[RetrievedMetric, ...]
     prompt_context: str
+    retrieval_mode: str
 
     @property
     def names(self) -> list[str]:
@@ -46,10 +61,12 @@ class MetricRetrievalResult:
 class MetricRetriever:
     """本地指标口径检索器。
 
-    V3.0 的目标是先跑通 RAG 的业务闭环：
-    用户问题 -> 检索指标口径 -> 注入 SQL prompt -> 生成更懂业务口径的 SQL。
+    V3.1 采用 hybrid 检索：
+    1. 关键词/别名精确匹配，保证强业务词稳定命中；
+    2. 字符 n-gram cosine 相似度，补充同义表达和不完全匹配。
 
-    当前用关键词和别名匹配实现，后续可以把 retrieve 方法升级成 embedding 检索。
+    这不是最终的向量数据库方案，但已经具备 RAG 检索增强的完整工程骨架。
+    后续接 embedding 时，可以替换 _semantic_score，不需要改变主控流程。
     """
 
     def __init__(self, knowledge_dir: str | Path | None = None):
@@ -62,22 +79,34 @@ class MetricRetriever:
 
         if not self.metrics_dir.exists():
             return []
-        return [
-            self._load_metric_file(path)
-            for path in sorted(self.metrics_dir.glob("*.md"))
-        ]
+        return [self._load_metric_file(path) for path in sorted(self.metrics_dir.glob("*.md"))]
 
-    def retrieve(self, question: str, top_k: int = 3) -> MetricRetrievalResult:
+    def retrieve(
+        self,
+        question: str,
+        top_k: int = 3,
+        min_score: float = 1.0,
+    ) -> MetricRetrievalResult:
         """根据用户问题检索最相关的指标口径。"""
 
         retrieved: list[RetrievedMetric] = []
         for metric in self.load_metrics():
-            score, matched_terms = self._score(question, metric)
-            if score > 0:
+            lexical_score, matched_terms = self._lexical_score(question, metric)
+            semantic_score = self._semantic_score(question, metric.search_text)
+            # lexical 负责强命中，semantic 负责弱相关补充。
+            # 如果没有任何关键词/别名命中，纯语义召回必须超过更高门槛，避免把
+            # “订单数量”这种问题误召回到“客单价”等相邻但不同的指标。
+            if lexical_score == 0 and semantic_score < 0.30:
+                score = 0.0
+            else:
+                score = lexical_score + semantic_score * 4
+            if score >= min_score:
                 retrieved.append(
                     RetrievedMetric(
                         metric=metric,
-                        score=score,
+                        score=round(score, 4),
+                        lexical_score=lexical_score,
+                        semantic_score=round(semantic_score, 4),
                         matched_terms=tuple(sorted(matched_terms)),
                     )
                 )
@@ -86,6 +115,7 @@ class MetricRetriever:
         return MetricRetrievalResult(
             metrics=selected,
             prompt_context=self._build_prompt_context(selected),
+            retrieval_mode="hybrid_lexical_ngram_v1",
         )
 
     def _load_metric_file(self, path: Path) -> MetricDefinition:
@@ -111,18 +141,18 @@ class MetricRetriever:
             content=content,
         )
 
-    def _score(self, question: str, metric: MetricDefinition) -> tuple[int, set[str]]:
+    def _lexical_score(self, question: str, metric: MetricDefinition) -> tuple[int, set[str]]:
         normalized_question = question.casefold()
         score = 0
         matched_terms: set[str] = set()
 
         if metric.name.casefold() in normalized_question:
-            score += 5
+            score += 6
             matched_terms.add(metric.name)
 
         for alias in metric.aliases:
             if alias.casefold() in normalized_question:
-                score += 4
+                score += 5
                 matched_terms.add(alias)
 
         for keyword in metric.keywords:
@@ -132,9 +162,14 @@ class MetricRetriever:
 
         return score, matched_terms
 
+    def _semantic_score(self, question: str, metric_text: str) -> float:
+        question_vector = _to_ngram_vector(question)
+        metric_vector = _to_ngram_vector(metric_text)
+        return _cosine_similarity(question_vector, metric_vector)
+
     def _build_prompt_context(self, metrics: tuple[RetrievedMetric, ...]) -> str:
         if not metrics:
-            return "未检索到相关业务指标口径。"
+            return NO_METRIC_CONTEXT
 
         blocks = []
         for item in metrics:
@@ -143,6 +178,8 @@ class MetricRetriever:
                     [
                         f"### {item.metric.name}",
                         f"匹配词：{', '.join(item.matched_terms) or '-'}",
+                        f"检索分数：{item.score}",
+                        "检索模式：hybrid_lexical_ngram_v1",
                         item.metric.content,
                     ]
                 )
@@ -152,6 +189,37 @@ class MetricRetriever:
 
 def _split_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _to_ngram_vector(text: str) -> Counter[str]:
+    """把中英文混合文本转换成轻量 n-gram 向量。
+
+    中文没有分词器时，用字符 bigram 能覆盖一部分语义相似表达；
+    英文和数字用 token，适合识别 GMV、AOV、order_count 等术语。
+    """
+
+    normalized = text.casefold()
+    vector: Counter[str] = Counter()
+    ascii_tokens = re.findall(r"[a-z0-9_]+", normalized)
+    vector.update(ascii_tokens)
+
+    cjk_chars = re.findall(r"[\u4e00-\u9fff]", normalized)
+    vector.update(cjk_chars)
+    vector.update("".join(pair) for pair in zip(cjk_chars, cjk_chars[1:], strict=False))
+    return vector
+
+
+def _cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
+    if not left or not right:
+        return 0.0
+
+    common = set(left) & set(right)
+    dot_product = sum(left[token] * right[token] for token in common)
+    left_norm = math.sqrt(sum(value * value for value in left.values()))
+    right_norm = math.sqrt(sum(value * value for value in right.values()))
+    if left_norm == 0 or right_norm == 0:
+        return 0.0
+    return dot_product / (left_norm * right_norm)
 
 
 @lru_cache
