@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat import router as chat_router
 from app.api.examples import router as examples_router
+from app.api.files import router as files_router
 from app.api.health import router as health_router
 from app.api.schema import router as schema_router
 from app.core.config import get_settings
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(examples_router, prefix="/api")
     app.include_router(schema_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")
+    app.include_router(files_router, prefix="/api")
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

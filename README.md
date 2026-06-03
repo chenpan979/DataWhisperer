@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.4：DashScope Embedding + Milvus 指标检索版本**。
+当前项目已经更新到 **V3.5：数据结构与 RAG 知识库管理台版本**。
 
 版本入口：
 
@@ -13,6 +13,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.2.0`：新增指标检索评测集，验证问题是否命中正确业务指标。
 - `v3.3.0`：接入 Milvus 向量数据库作为指标检索层，并保留本地检索自动兜底。
 - `v3.4.0`：将指标向量化升级为 DashScope `text-embedding-v4`，Milvus 索引使用真实语义向量。
+- `v3.5.0`：升级中文控制台，新增数据结构资料和 RAG 知识库资料的上传、列表、预览、删除能力。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -37,6 +38,8 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.3 增加 Milvus 向量数据库检索层，指标 Markdown 仍作为知识源，Milvus 作为可重建索引。
 - Milvus 未启动、未安装客户端或索引未同步时，系统可自动回退到本地 hybrid 检索，避免演示环境阻塞。
 - V3.4 使用 DashScope `text-embedding-v4` 生成指标向量，hashing 向量化器保留为本地兜底。
+- V3.5 将控制台拆成 AI 查数、数据结构、RAG 知识库三个工作区。
+- 支持数据结构资料和 RAG 知识库资料上传、列表查看、文本预览和删除。
 
 ## 技术栈
 
@@ -117,6 +120,9 @@ scripts/
   mysql_sample.sql      示例电商销售数据库
 static/
   index.html            中文控制台页面
+storage/
+  schema_files/          数据结构资料上传目录，已加入 .gitignore
+  rag_knowledge/         RAG 知识库资料上传目录，已加入 .gitignore
 tests/
   单元测试和接口契约测试
 ```
@@ -233,6 +239,8 @@ uvicorn app.main:app --reload --port 8081
 - 健康检查：http://127.0.0.1:8081/api/health
 - 示例问题：http://127.0.0.1:8081/api/examples
 - 数据结构：http://127.0.0.1:8081/api/schema/overview
+- 数据结构资料文件：http://127.0.0.1:8081/api/files/schema
+- RAG 知识库资料文件：http://127.0.0.1:8081/api/files/rag
 
 ## 主要接口
 
@@ -274,6 +282,24 @@ uvicorn app.main:app --reload --port 8081
 - `prompt_versions`：本次请求使用过的 prompt 版本。
 - `retrieved_metrics`：本次请求检索到的业务指标口径。
 - `repair_count`：SQL 自动修复次数。
+
+### 文件管理接口
+
+V3.5 新增两组资料管理接口：
+
+```text
+GET    /api/files/schema
+POST   /api/files/schema
+GET    /api/files/schema/{file_id}/preview
+DELETE /api/files/schema/{file_id}
+
+GET    /api/files/rag
+POST   /api/files/rag
+GET    /api/files/rag/{file_id}/preview
+DELETE /api/files/rag/{file_id}
+```
+
+当前文件上传用于资料管理和控制台展示。后续版本可以继续接入自动解析、CSV 入库、RAG 切片和 Milvus 索引同步。
 
 ## 示例问题
 
@@ -330,6 +356,7 @@ ruff check .
 - V3.4 DashScope embedding 客户端和 hashing 本地兜底
 - Milvus 指标检索命中与本地检索兜底
 - Milvus 指标文档同步构造
+- V3.5 文件上传、预览、删除和 API 路由契约
 
 运行基础评测：
 
@@ -356,7 +383,7 @@ pass_rate: 1.0
 
 可以用下面这段作为 1 分钟项目介绍：
 
-> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.1/V3.2 补充混合检索和指标评测，V3.3 接入 Milvus 向量数据库，V3.4 使用 DashScope text-embedding-v4 生成真实语义向量，并保留本地检索兜底，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标、具备向量检索基础设施”的大模型工程项目。
+> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.3 接入 Milvus 向量数据库，V3.4 使用 DashScope text-embedding-v4 生成真实语义向量，V3.5 将前端升级为三工作区控制台，支持数据结构资料和 RAG 知识库资料管理，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标、具备向量检索基础设施和运营管理界面”的大模型工程项目。
 
 更多讲解内容见：[docs/interview-guide.md](docs/interview-guide.md)。
 
@@ -422,6 +449,7 @@ uvicorn app.main:app --reload --port 8081
 - V3.2：指标检索评测集，验证指标召回、误召回和报告输出。
 - V3.3：Milvus 向量数据库检索层，支持指标向量索引同步和本地检索兜底。
 - V3.4：DashScope `text-embedding-v4` 指标向量化，Milvus 使用真实语义向量检索。
+- V3.5：产品控制台升级，新增数据结构资料和 RAG 知识库资料管理页面。
 - V4：MCP 工具化，把数据库查询、图表生成、导出能力包装成工具。
 - V5：多智能体拆分，引入 Schema Analyst、SQL Engineer、Chart Designer、Report Writer。
 - V6：评测体系增强，增加真实 LLM 评测、SQL 正确率、修复成功率和分析结论质量评估。

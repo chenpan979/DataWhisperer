@@ -13,3 +13,7 @@ def test_app_routes_exist() -> None:
     assert "/api/examples" in paths
     assert "/api/schema/overview" in paths
     assert "/api/chat/query" in paths
+    assert "/api/files/schema" in paths
+    assert "/api/files/schema/{file_id}/preview" in paths
+    assert "/api/files/rag" in paths
+    assert "/api/files/rag/{file_id}/preview" in paths

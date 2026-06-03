@@ -2,6 +2,10 @@ const state = {
   examples: [],
   lastResponse: null,
   chart: null,
+  files: {
+    schema: [],
+    rag: [],
+  },
 };
 
 const chartTypeLabels = {
@@ -37,6 +41,29 @@ const valueLabels = {
   "West China": "西部",
 };
 
+const fileManagers = {
+  schema: {
+    endpoint: "/api/files/schema",
+    input: "#schemaFileInput",
+    table: "#schemaFileTable",
+    count: "#schemaFileCount",
+    state: "#schemaUploadState",
+    previewTitle: "#schemaPreviewTitle",
+    previewBlock: "#schemaPreviewBlock",
+    defaultPreview: "选择左侧文件后查看内容。",
+  },
+  rag: {
+    endpoint: "/api/files/rag",
+    input: "#ragFileInput",
+    table: "#ragFileTable",
+    count: "#ragFileCount",
+    state: "#ragUploadState",
+    previewTitle: "#ragPreviewTitle",
+    previewBlock: "#ragPreviewBlock",
+    defaultPreview: "选择左侧文件后查看内容。",
+  },
+};
+
 const el = {
   healthStatus: document.querySelector("#healthStatus"),
   questionInput: document.querySelector("#questionInput"),
@@ -61,6 +88,10 @@ const el = {
   traceList: document.querySelector("#traceList"),
   tabs: document.querySelectorAll(".tab"),
   tabPanels: document.querySelectorAll(".tab-panel"),
+  navItems: document.querySelectorAll(".nav-item"),
+  viewPanels: document.querySelectorAll(".view-panel"),
+  refreshSchemaFilesButton: document.querySelector("#refreshSchemaFilesButton"),
+  refreshRagFilesButton: document.querySelector("#refreshRagFilesButton"),
 };
 
 function setRunState(label, kind = "idle") {
@@ -71,6 +102,13 @@ function setRunState(label, kind = "idle") {
 function setHealth(label, kind = "") {
   el.healthStatus.textContent = label;
   el.healthStatus.className = `status-pill ${kind}`;
+}
+
+function setFileState(category, label, kind = "") {
+  const config = fileManagers[category];
+  const node = document.querySelector(config.state);
+  node.textContent = label;
+  node.className = `muted-text ${kind}`;
 }
 
 async function fetchJson(url, options) {
@@ -326,6 +364,128 @@ function switchTab(tabName) {
   }
 }
 
+function switchView(viewId) {
+  el.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === viewId));
+  el.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.id === viewId));
+  if (viewId === "analysisView" && state.chart) {
+    setTimeout(() => state.chart.resize(), 0);
+  }
+  if (viewId === "schemaView") {
+    loadManagedFiles("schema");
+  }
+  if (viewId === "ragView") {
+    loadManagedFiles("rag");
+  }
+}
+
+async function loadManagedFiles(category) {
+  const config = fileManagers[category];
+  setFileState(category, "读取中");
+  try {
+    const data = await fetchJson(config.endpoint);
+    state.files[category] = data.files || [];
+    renderManagedFiles(category);
+    setFileState(category, "已同步", "ok");
+  } catch (error) {
+    setFileState(category, error.message, "error");
+  }
+}
+
+function renderManagedFiles(category) {
+  const config = fileManagers[category];
+  const files = state.files[category] || [];
+  document.querySelector(config.count).textContent = `${files.length} 个文件`;
+  const table = document.querySelector(config.table);
+  if (!files.length) {
+    table.innerHTML = `<tr><td colspan="5"><div class="inline-empty">暂无文件</div></td></tr>`;
+    return;
+  }
+
+  table.innerHTML = files
+    .map(
+      (file) => `
+        <tr>
+          <td><div class="file-name-cell" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div></td>
+          <td>${escapeHtml(file.extension || "-")}</td>
+          <td>${escapeHtml(formatBytes(file.size_bytes))}</td>
+          <td>${escapeHtml(formatDate(file.uploaded_at))}</td>
+          <td>
+            <div class="file-actions">
+              <button class="icon-button" type="button" data-action="preview" data-id="${escapeHtml(file.id)}" title="预览">
+                <svg><use href="#icon-eye"></use></svg>
+              </button>
+              <button class="danger-button icon-only" type="button" data-action="delete" data-id="${escapeHtml(file.id)}" title="删除">
+                <svg><use href="#icon-trash"></use></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+async function uploadManagedFile(category, file) {
+  if (!file) {
+    return;
+  }
+  const config = fileManagers[category];
+  const formData = new FormData();
+  formData.append("file", file);
+  setFileState(category, "上传中");
+  try {
+    await fetchJson(config.endpoint, {
+      method: "POST",
+      body: formData,
+    });
+    setFileState(category, "上传完成", "ok");
+    await loadManagedFiles(category);
+  } catch (error) {
+    setFileState(category, error.message, "error");
+  } finally {
+    document.querySelector(config.input).value = "";
+  }
+}
+
+async function previewManagedFile(category, fileId) {
+  const config = fileManagers[category];
+  const title = document.querySelector(config.previewTitle);
+  const block = document.querySelector(config.previewBlock);
+  title.textContent = "读取中";
+  block.textContent = "读取中";
+  try {
+    const data = await fetchJson(`${config.endpoint}/${fileId}/preview`);
+    title.textContent = data.name;
+    block.textContent = data.previewable ? data.preview : "该文件类型暂不支持文本预览。";
+  } catch (error) {
+    title.textContent = "预览失败";
+    block.textContent = error.message;
+  }
+}
+
+async function deleteManagedFile(category, fileId) {
+  const confirmed = window.confirm("确认删除这个文件吗？");
+  if (!confirmed) {
+    return;
+  }
+  const config = fileManagers[category];
+  setFileState(category, "删除中");
+  try {
+    await fetchJson(`${config.endpoint}/${fileId}`, { method: "DELETE" });
+    resetPreview(category);
+    await loadManagedFiles(category);
+    setFileState(category, "已删除", "ok");
+  } catch (error) {
+    setFileState(category, error.message, "error");
+  }
+}
+
+function resetPreview(category) {
+  const config = fileManagers[category];
+  document.querySelector(config.previewTitle).textContent = "未选择文件";
+  document.querySelector(config.previewBlock).textContent = config.defaultPreview;
+}
+
 async function copySql() {
   const sql = el.sqlBlock.textContent;
   if (!sql || sql.startsWith("--")) {
@@ -348,6 +508,31 @@ function formatCell(value) {
   return valueLabels[String(value)] || String(value);
 }
 
+function formatBytes(value) {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return date.toLocaleString("zh-CN", {
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function labelForColumn(column) {
   return columnLabels[column] || column;
 }
@@ -355,7 +540,9 @@ function labelForColumn(column) {
 function labelForStep(step) {
   const labels = {
     schema: "读取数据结构",
+    metric_retrieval: "检索指标口径",
     generate_sql: "生成 SQL",
+    sql_repair: "修复 SQL",
     execute_sql: "执行查询",
     chart: "生成图表",
     insight: "生成结论",
@@ -367,6 +554,7 @@ function labelForStatus(status) {
   const labels = {
     ok: "成功",
     failed: "失败",
+    retry: "重试",
   };
   return labels[status] || status;
 }
@@ -385,6 +573,16 @@ function bindEvents() {
   el.refreshExamplesButton.addEventListener("click", loadExamples);
   el.loadSchemaButton.addEventListener("click", loadSchema);
   el.copySqlButton.addEventListener("click", copySql);
+  el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
+  el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
+
+  document.querySelector(fileManagers.schema.input).addEventListener("change", (event) => {
+    uploadManagedFile("schema", event.target.files[0]);
+  });
+  document.querySelector(fileManagers.rag.input).addEventListener("change", (event) => {
+    uploadManagedFile("rag", event.target.files[0]);
+  });
+
   el.exampleList.addEventListener("click", (event) => {
     const button = event.target.closest(".example-button");
     if (!button) {
@@ -396,8 +594,28 @@ function bindEvents() {
       el.questionInput.focus();
     }
   });
+
+  for (const category of Object.keys(fileManagers)) {
+    const config = fileManagers[category];
+    document.querySelector(config.table).addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) {
+        return;
+      }
+      if (button.dataset.action === "preview") {
+        previewManagedFile(category, button.dataset.id);
+      }
+      if (button.dataset.action === "delete") {
+        deleteManagedFile(category, button.dataset.id);
+      }
+    });
+  }
+
   el.tabs.forEach((tab) => {
     tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+  });
+  el.navItems.forEach((item) => {
+    item.addEventListener("click", () => switchView(item.dataset.view));
   });
   window.addEventListener("resize", () => {
     if (state.chart) {
@@ -409,3 +627,5 @@ function bindEvents() {
 bindEvents();
 checkHealth();
 loadExamples();
+loadManagedFiles("schema");
+loadManagedFiles("rag");

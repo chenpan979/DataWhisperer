@@ -32,6 +32,31 @@
       <symbol id="icon-check" viewBox="0 0 24 24">
         <path d="M20 6 9 17l-5-5"></path>
       </symbol>
+      <symbol id="icon-table" viewBox="0 0 24 24">
+        <path d="M3 5h18v16H3z"></path>
+        <path d="M3 10h18"></path>
+        <path d="M9 5v16"></path>
+      </symbol>
+      <symbol id="icon-brain" viewBox="0 0 24 24">
+        <path d="M8 6a3 3 0 0 1 5-2.2A3 3 0 0 1 18 6a4 4 0 0 1-1 7.8V18a3 3 0 0 1-5 2.2A3 3 0 0 1 7 18v-4.2A4 4 0 0 1 8 6Z"></path>
+        <path d="M12 4v16"></path>
+        <path d="M8 10h4"></path>
+        <path d="M12 14h5"></path>
+      </symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24">
+        <path d="M12 3v12"></path>
+        <path d="m7 8 5-5 5 5"></path>
+        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M3 6h18"></path>
+        <path d="M8 6V4h8v2"></path>
+        <path d="M19 6l-1 16H6L5 6"></path>
+      </symbol>
+      <symbol id="icon-eye" viewBox="0 0 24 24">
+        <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </symbol>
     </svg>
 
     <div class="app-shell">
@@ -49,129 +74,270 @@
         </div>
       </header>
 
-      <main class="workspace">
-        <aside class="query-panel" aria-label="查询工作区">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <h2>数据问题</h2>
-                <p>连接示例 MySQL 库</p>
-              </div>
-              <button class="icon-button" id="refreshExamplesButton" type="button" title="刷新示例">
-                <svg><use href="#icon-refresh"></use></svg>
-              </button>
-            </div>
-
-            <label class="field-label" for="questionInput">问题</label>
-            <textarea
-              id="questionInput"
-              rows="7"
-              spellcheck="false"
-              placeholder="例如：查询各地区订单数量"
-            ></textarea>
-
-            <div class="control-row">
-              <label class="field-label compact" for="maxRowsInput">行数</label>
-              <input id="maxRowsInput" type="number" min="1" max="500" value="100" />
-              <button class="primary-button" id="runButton" type="button">
-                <svg><use href="#icon-send"></use></svg>
-                <span>运行分析</span>
-              </button>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <h2>示例问题</h2>
-                <p>来自 /api/examples</p>
-              </div>
-            </div>
-            <div class="example-list" id="exampleList"></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <h2>数据结构</h2>
-                <p>表与字段概览</p>
-              </div>
-              <button class="secondary-button" id="loadSchemaButton" type="button">
-                <svg><use href="#icon-database"></use></svg>
-                <span>读取</span>
-              </button>
-            </div>
-            <div class="schema-box" id="schemaBox">未加载</div>
-          </section>
+      <main class="console-layout">
+        <aside class="side-nav" aria-label="模块导航">
+          <button class="nav-item active" type="button" data-view="analysisView">
+            <svg><use href="#icon-send"></use></svg>
+            <span>AI 查数</span>
+          </button>
+          <button class="nav-item" type="button" data-view="schemaView">
+            <svg><use href="#icon-table"></use></svg>
+            <span>数据结构</span>
+          </button>
+          <button class="nav-item" type="button" data-view="ragView">
+            <svg><use href="#icon-brain"></use></svg>
+            <span>RAG 知识库</span>
+          </button>
         </aside>
 
-        <section class="result-area" aria-label="分析结果">
-          <div class="summary-band">
-            <div class="metric">
-              <span>结果行数</span>
-              <strong id="metricRows">0</strong>
-            </div>
-            <div class="metric">
-              <span>字段数量</span>
-              <strong id="metricColumns">0</strong>
-            </div>
-            <div class="metric">
-              <span>图表类型</span>
-              <strong id="metricChart">-</strong>
-            </div>
-            <div class="metric">
-              <span>执行步骤</span>
-              <strong id="metricTrace">0</strong>
-            </div>
-          </div>
+        <section class="view-stack">
+          <section class="view-panel active" id="analysisView" aria-label="AI 查数">
+            <div class="workspace analysis-workspace">
+              <aside class="query-panel" aria-label="查询工作区">
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>数据问题</h2>
+                      <p>连接示例 MySQL 库</p>
+                    </div>
+                    <button class="icon-button" id="refreshExamplesButton" type="button" title="刷新示例">
+                      <svg><use href="#icon-refresh"></use></svg>
+                    </button>
+                  </div>
 
-          <section class="panel insight-panel">
-            <div class="panel-heading">
-              <div>
-                <h2>分析结论</h2>
-                <p id="activeQuestion">等待问题输入</p>
-              </div>
-              <span class="state-label" id="runState">空闲</span>
+                  <label class="field-label" for="questionInput">问题</label>
+                  <textarea
+                    id="questionInput"
+                    rows="7"
+                    spellcheck="false"
+                    placeholder="例如：查询各地区订单数量"
+                  ></textarea>
+
+                  <div class="control-row">
+                    <label class="field-label compact" for="maxRowsInput">行数</label>
+                    <input id="maxRowsInput" type="number" min="1" max="500" value="100" />
+                    <button class="primary-button" id="runButton" type="button">
+                      <svg><use href="#icon-send"></use></svg>
+                      <span>运行分析</span>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>示例问题</h2>
+                      <p>来自 /api/examples</p>
+                    </div>
+                  </div>
+                  <div class="example-list" id="exampleList"></div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>表结构概览</h2>
+                      <p>来自 MySQL 示例库</p>
+                    </div>
+                    <button class="secondary-button" id="loadSchemaButton" type="button">
+                      <svg><use href="#icon-database"></use></svg>
+                      <span>读取</span>
+                    </button>
+                  </div>
+                  <div class="schema-box" id="schemaBox">未加载</div>
+                </section>
+              </aside>
+
+              <section class="result-area" aria-label="分析结果">
+                <div class="summary-band">
+                  <div class="metric">
+                    <span>结果行数</span>
+                    <strong id="metricRows">0</strong>
+                  </div>
+                  <div class="metric">
+                    <span>字段数量</span>
+                    <strong id="metricColumns">0</strong>
+                  </div>
+                  <div class="metric">
+                    <span>图表类型</span>
+                    <strong id="metricChart">-</strong>
+                  </div>
+                  <div class="metric">
+                    <span>执行步骤</span>
+                    <strong id="metricTrace">0</strong>
+                  </div>
+                </div>
+
+                <section class="panel insight-panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>分析结论</h2>
+                      <p id="activeQuestion">等待问题输入</p>
+                    </div>
+                    <span class="state-label" id="runState">空闲</span>
+                  </div>
+                  <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
+                  <div class="warning-list" id="warningList"></div>
+                </section>
+
+                <section class="panel">
+                  <div class="tabs" role="tablist" aria-label="结果视图">
+                    <button class="tab active" data-tab="chart" type="button">图表</button>
+                    <button class="tab" data-tab="table" type="button">表格</button>
+                    <button class="tab" data-tab="sql" type="button">SQL</button>
+                    <button class="tab" data-tab="trace" type="button">轨迹</button>
+                  </div>
+
+                  <div class="tab-panel active" id="chartPanel">
+                    <div class="chart-host empty-chart" id="chartHost">
+                      <div class="empty-state">暂无图表</div>
+                    </div>
+                  </div>
+
+                  <div class="tab-panel" id="tablePanel">
+                    <div class="table-wrap">
+                      <table id="resultTable">
+                        <thead></thead>
+                        <tbody></tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="tab-panel" id="sqlPanel">
+                    <div class="code-toolbar">
+                      <span>执行 SQL</span>
+                      <button class="icon-button" id="copySqlButton" type="button" title="复制 SQL">
+                        <svg><use href="#icon-copy"></use></svg>
+                      </button>
+                    </div>
+                    <pre class="sql-block" id="sqlBlock">-- SQL will appear here</pre>
+                  </div>
+
+                  <div class="tab-panel" id="tracePanel">
+                    <ol class="trace-list" id="traceList"></ol>
+                  </div>
+                </section>
+              </section>
             </div>
-            <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
-            <div class="warning-list" id="warningList"></div>
           </section>
 
-          <section class="panel">
-            <div class="tabs" role="tablist" aria-label="结果视图">
-              <button class="tab active" data-tab="chart" type="button">图表</button>
-              <button class="tab" data-tab="table" type="button">表格</button>
-              <button class="tab" data-tab="sql" type="button">SQL</button>
-              <button class="tab" data-tab="trace" type="button">轨迹</button>
-            </div>
+          <section class="view-panel" id="schemaView" aria-label="数据结构">
+            <div class="manager-layout">
+              <section class="manager-main">
+                <div class="section-head">
+                  <div>
+                    <h2>数据结构资料</h2>
+                    <p>上传表结构、字段说明、建表 SQL 或数据字典文件</p>
+                  </div>
+                  <button class="secondary-button" id="refreshSchemaFilesButton" type="button">
+                    <svg><use href="#icon-refresh"></use></svg>
+                    <span>刷新</span>
+                  </button>
+                </div>
 
-            <div class="tab-panel active" id="chartPanel">
-              <div class="chart-host empty-chart" id="chartHost">
-                <div class="empty-state">暂无图表</div>
-              </div>
-            </div>
+                <section class="upload-zone">
+                  <div>
+                    <strong>上传数据结构文件</strong>
+                    <span>支持 SQL、JSON、CSV、Markdown、TXT、Excel</span>
+                  </div>
+                  <label class="primary-button upload-button" for="schemaFileInput">
+                    <svg><use href="#icon-upload"></use></svg>
+                    <span>选择文件</span>
+                  </label>
+                  <input class="file-input" id="schemaFileInput" type="file" />
+                </section>
 
-            <div class="tab-panel" id="tablePanel">
-              <div class="table-wrap">
-                <table id="resultTable">
-                  <thead></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
+                <section class="panel manager-panel">
+                  <div class="manager-toolbar">
+                    <span id="schemaFileCount">0 个文件</span>
+                    <span class="muted-text" id="schemaUploadState">等待上传</span>
+                  </div>
+                  <div class="file-table-wrap">
+                    <table class="file-table">
+                      <thead>
+                        <tr>
+                          <th>文件名</th>
+                          <th>类型</th>
+                          <th>大小</th>
+                          <th>上传时间</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody id="schemaFileTable"></tbody>
+                    </table>
+                  </div>
+                </section>
+              </section>
 
-            <div class="tab-panel" id="sqlPanel">
-              <div class="code-toolbar">
-                <span>执行 SQL</span>
-                <button class="icon-button" id="copySqlButton" type="button" title="复制 SQL">
-                  <svg><use href="#icon-copy"></use></svg>
-                </button>
-              </div>
-              <pre class="sql-block" id="sqlBlock">-- SQL will appear here</pre>
+              <aside class="preview-pane">
+                <div class="panel-heading">
+                  <div>
+                    <h2>文件预览</h2>
+                    <p id="schemaPreviewTitle">未选择文件</p>
+                  </div>
+                </div>
+                <pre class="preview-block" id="schemaPreviewBlock">选择左侧文件后查看内容。</pre>
+              </aside>
             </div>
+          </section>
 
-            <div class="tab-panel" id="tracePanel">
-              <ol class="trace-list" id="traceList"></ol>
+          <section class="view-panel" id="ragView" aria-label="RAG 知识库">
+            <div class="manager-layout">
+              <section class="manager-main">
+                <div class="section-head">
+                  <div>
+                    <h2>RAG 知识库资料</h2>
+                    <p>上传业务口径、指标说明、FAQ、分析规则或 SQL 样例</p>
+                  </div>
+                  <button class="secondary-button" id="refreshRagFilesButton" type="button">
+                    <svg><use href="#icon-refresh"></use></svg>
+                    <span>刷新</span>
+                  </button>
+                </div>
+
+                <section class="upload-zone">
+                  <div>
+                    <strong>上传知识库文件</strong>
+                    <span>支持 Markdown、TXT、PDF、SQL、JSON、CSV、Excel</span>
+                  </div>
+                  <label class="primary-button upload-button" for="ragFileInput">
+                    <svg><use href="#icon-upload"></use></svg>
+                    <span>选择文件</span>
+                  </label>
+                  <input class="file-input" id="ragFileInput" type="file" />
+                </section>
+
+                <section class="panel manager-panel">
+                  <div class="manager-toolbar">
+                    <span id="ragFileCount">0 个文件</span>
+                    <span class="muted-text" id="ragUploadState">等待上传</span>
+                  </div>
+                  <div class="file-table-wrap">
+                    <table class="file-table">
+                      <thead>
+                        <tr>
+                          <th>文件名</th>
+                          <th>类型</th>
+                          <th>大小</th>
+                          <th>上传时间</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody id="ragFileTable"></tbody>
+                    </table>
+                  </div>
+                </section>
+              </section>
+
+              <aside class="preview-pane">
+                <div class="panel-heading">
+                  <div>
+                    <h2>文件预览</h2>
+                    <p id="ragPreviewTitle">未选择文件</p>
+                  </div>
+                </div>
+                <pre class="preview-block" id="ragPreviewBlock">选择左侧文件后查看内容。</pre>
+              </aside>
             </div>
           </section>
         </section>
