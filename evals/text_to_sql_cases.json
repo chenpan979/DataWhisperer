@@ -1,0 +1,72 @@
+[
+  {
+    "id": "monthly_sales_trend",
+    "question": "查询最近 6 个月每月销售额趋势",
+    "tags": ["sales", "trend", "line"],
+    "expected_sql_contains": [
+      "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+      "SUM(oi.quantity * oi.unit_price)",
+      "GROUP BY DATE_FORMAT(o.order_date, '%Y-%m')"
+    ],
+    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
+    "expected_columns": ["month", "sales_amount"],
+    "expected_chart_type": "line",
+    "must_be_safe": true
+  },
+  {
+    "id": "category_sales_share",
+    "question": "查询各商品品类销售额占比",
+    "tags": ["sales", "category", "pie"],
+    "expected_sql_contains": [
+      "p.category",
+      "SUM(oi.quantity * oi.unit_price)",
+      "GROUP BY p.category"
+    ],
+    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
+    "expected_columns": ["category", "sales_amount"],
+    "expected_chart_type": "pie",
+    "must_be_safe": true
+  },
+  {
+    "id": "region_avg_order_value",
+    "question": "哪个地区客单价最高",
+    "tags": ["region", "aov", "bar"],
+    "expected_sql_contains": [
+      "r.region_name",
+      "COUNT(DISTINCT o.order_id)",
+      "avg_order_value"
+    ],
+    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
+    "expected_columns": ["region_name", "avg_order_value"],
+    "expected_chart_type": "bar",
+    "must_be_safe": true
+  },
+  {
+    "id": "product_sales_decline",
+    "question": "找出销售额下滑最明显的商品",
+    "tags": ["product", "decline", "bar"],
+    "expected_sql_contains": [
+      "previous_month",
+      "last_month",
+      "amount_change"
+    ],
+    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
+    "expected_columns": ["product_name", "previous_amount", "last_amount", "amount_change"],
+    "expected_chart_type": "bar",
+    "must_be_safe": true
+  },
+  {
+    "id": "region_order_count",
+    "question": "查询各地区订单数量",
+    "tags": ["region", "orders", "bar"],
+    "expected_sql_contains": [
+      "r.region_name",
+      "COUNT(DISTINCT o.order_id) AS order_count",
+      "GROUP BY r.region_name"
+    ],
+    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
+    "expected_columns": ["region_name", "order_count"],
+    "expected_chart_type": "bar",
+    "must_be_safe": true
+  }
+]

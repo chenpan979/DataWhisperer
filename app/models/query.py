@@ -53,3 +53,11 @@ class QueryResponse(BaseModel):
     insight: str = Field(description="Concise business analysis based on returned rows.")
     warnings: list[str] = Field(default_factory=list)
     trace_steps: list[TraceStep] = Field(default_factory=list)
+    prompt_versions: dict[str, str] = Field(
+        default_factory=dict,
+        description="Prompt versions used in this request, for example sql_generation=v1.",
+    )
+    repair_count: int = Field(
+        default=0,
+        description="How many SQL repair attempts were used. V2 first step keeps it at 0.",
+    )

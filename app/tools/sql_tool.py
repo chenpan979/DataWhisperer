@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.prompts import DEFAULT_PROMPT_VERSION, PromptRegistry, get_prompt_registry
+
 
 # 这些关键字不应该出现在本项目的 SQL 中。
 # 提示词可以提醒模型“只生成 SELECT”，但真正的安全边界必须靠代码兜住。
@@ -36,6 +38,8 @@ class GeneratedSQL:
     sql: str
     explanation: str
     used_fallback: bool = False
+    prompt_id: str | None = None
+    prompt_version: str | None = None
 
 
 def extract_sql(text: str) -> str:
@@ -84,35 +88,81 @@ def ensure_limit(sql: str, max_rows: int) -> str:
     return f"{cleaned}\nLIMIT {max_rows}"
 
 
-async def generate_sql(question: str, schema_prompt: str, llm: Any) -> GeneratedSQL:
+async def generate_sql(
+    question: str,
+    schema_prompt: str,
+    llm: Any,
+    prompt_registry: PromptRegistry | None = None,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+) -> GeneratedSQL:
     """根据自然语言问题和 schema 上下文生成 MySQL SQL。"""
 
     deterministic_sql = try_fallback_sql(question)
     if deterministic_sql:
         return deterministic_sql
 
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a senior data analyst. Generate safe MySQL SELECT SQL only. "
-                "Return strict JSON with keys sql and explanation. Do not return markdown. "
-                "Use only the provided schema. Never use write, DDL, or multiple statements. "
-                "The explanation must be written in Simplified Chinese."
-            ),
+    registry = prompt_registry or get_prompt_registry()
+    rendered_prompt = registry.render_messages(
+        "sql_generation",
+        version=prompt_version,
+        variables={
+            "schema_prompt": schema_prompt,
+            "question": question,
         },
-        {
-            "role": "user",
-            "content": f"Schema:\n{schema_prompt}\n\nQuestion:\n{question}",
-        },
-    ]
+    )
     try:
-        payload = await llm.complete_json(messages)
+        payload = await llm.complete_json(rendered_prompt.messages)
     except Exception:
         payload = None
     if payload and payload.get("sql"):
-        return GeneratedSQL(sql=str(payload["sql"]), explanation=str(payload.get("explanation", "")))
+        return GeneratedSQL(
+            sql=str(payload["sql"]),
+            explanation=str(payload.get("explanation", "")),
+            prompt_id=rendered_prompt.prompt_id,
+            prompt_version=rendered_prompt.version,
+        )
     return fallback_sql(question)
+
+
+async def repair_sql(
+    question: str,
+    schema_prompt: str,
+    failed_sql: str,
+    error_message: str,
+    llm: Any,
+    prompt_registry: PromptRegistry | None = None,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+) -> GeneratedSQL | None:
+    """根据失败原因修复 SQL。
+
+    SQL 修复是 V2 的工程化增强：当模型第一次生成的 SQL 没有通过安全校验，
+    或者数据库执行时报错时，系统把错误原因反馈给模型，请它重新生成一条查询。
+    修复后的 SQL 仍然必须再次经过 validate_select_sql / ensure_limit 校验。
+    """
+
+    registry = prompt_registry or get_prompt_registry()
+    rendered_prompt = registry.render_messages(
+        "sql_repair",
+        version=prompt_version,
+        variables={
+            "schema_prompt": schema_prompt,
+            "question": question,
+            "failed_sql": failed_sql,
+            "error_message": error_message,
+        },
+    )
+    try:
+        payload = await llm.complete_json(rendered_prompt.messages)
+    except Exception:
+        payload = None
+    if not payload or not payload.get("sql"):
+        return None
+    return GeneratedSQL(
+        sql=str(payload["sql"]),
+        explanation=str(payload.get("explanation", "")),
+        prompt_id=rendered_prompt.prompt_id,
+        prompt_version=rendered_prompt.version,
+    )
 
 
 def try_fallback_sql(question: str) -> GeneratedSQL | None:

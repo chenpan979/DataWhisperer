@@ -7,7 +7,7 @@ from app.tools.chart_tool import recommend_chart
 from app.tools.insight_tool import generate_insight
 from app.tools.query_tool import execute_safe_query
 from app.tools.schema_tool import build_schema_overview, schema_to_prompt
-from app.tools.sql_tool import generate_sql
+from app.tools.sql_tool import GeneratedSQL, generate_sql, repair_sql
 
 
 class DataAnalysisOrchestrator:
@@ -29,11 +29,70 @@ class DataAnalysisOrchestrator:
         self.llm = llm
         self.settings = get_settings()
 
+    async def _execute_with_optional_repair(
+        self,
+        *,
+        question: str,
+        schema_prompt: str,
+        generated: GeneratedSQL,
+        max_rows: int,
+        trace: list[TraceStep],
+        warnings: list[str],
+        prompt_versions: dict[str, str],
+    ) -> tuple[str, list[str], list[dict], GeneratedSQL, int]:
+        """执行 SQL；失败时尝试一次模型自修复。
+
+        这一步是 V2 的关键增强：模型第一次生成 SQL 后，系统不再“一错就失败”，
+        而是把安全校验错误或数据库执行错误反馈给修复 prompt，再重试一次。
+        修复后的 SQL 仍然会走 execute_safe_query，所以安全边界没有变弱。
+        """
+
+        try:
+            safe_sql, columns, rows = execute_safe_query(self.engine, generated.sql, max_rows)
+            return safe_sql, columns, rows, generated, 0
+        except Exception as exc:
+            if generated.used_fallback:
+                raise
+            error_message = str(exc)
+            trace.append(
+                TraceStep(
+                    name="sql_repair",
+                    status="retry",
+                    detail=f"首次 SQL 执行失败，准备修复：{error_message}",
+                )
+            )
+            repaired = await repair_sql(
+                question=question,
+                schema_prompt=schema_prompt,
+                failed_sql=generated.sql,
+                error_message=error_message,
+                llm=self.llm,
+            )
+            if not repaired:
+                warnings.append("SQL 自动修复未返回可用结果，已保留首次失败信息。")
+                raise
+            if repaired.prompt_id and repaired.prompt_version:
+                prompt_versions[repaired.prompt_id] = repaired.prompt_version
+            safe_sql, columns, rows = execute_safe_query(self.engine, repaired.sql, max_rows)
+            trace.append(
+                TraceStep(
+                    name="sql_repair",
+                    status="ok",
+                    detail=(
+                        f"{repaired.explanation}"
+                        f"（prompt={repaired.prompt_id}@{repaired.prompt_version}）"
+                    ),
+                )
+            )
+            warnings.append("首次 SQL 执行失败，系统已自动修复并重新执行。")
+            return safe_sql, columns, rows, repaired, 1
+
     async def run(self, request: QueryRequest) -> QueryResponse:
         """执行一次完整的自然语言数据分析请求。"""
 
         trace: list[TraceStep] = []
         warnings: list[str] = []
+        prompt_versions: dict[str, str] = {}
 
         # 第一步：读取数据库结构，并压缩成适合放进 prompt 的文本。
         # 大模型需要知道有哪些表、字段、外键关系，但不需要直接看到原始数据。
@@ -47,12 +106,29 @@ class DataAnalysisOrchestrator:
         generated = await generate_sql(request.question, schema_prompt, self.llm)
         if generated.used_fallback:
             warnings.append("当前 SQL 由本地演示规则生成，用于保证示例问题稳定可运行。")
-        trace.append(TraceStep(name="generate_sql", status="ok", detail=generated.explanation))
+        if generated.prompt_id and generated.prompt_version:
+            prompt_versions[generated.prompt_id] = generated.prompt_version
+        sql_trace_detail = generated.explanation
+        if generated.prompt_id and generated.prompt_version:
+            sql_trace_detail = (
+                f"{generated.explanation}（prompt={generated.prompt_id}@{generated.prompt_version}）"
+            )
+        trace.append(TraceStep(name="generate_sql", status="ok", detail=sql_trace_detail))
 
         # 第三步：执行 SQL 前再次做安全校验和行数限制。
         # 不能只依赖提示词约束模型，真正的安全边界必须在服务端代码里。
         max_rows = min(request.max_rows, self.settings.max_query_rows)
-        safe_sql, columns, rows = execute_safe_query(self.engine, generated.sql, max_rows)
+        safe_sql, columns, rows, final_sql_result, repair_count = (
+            await self._execute_with_optional_repair(
+                question=request.question,
+                schema_prompt=schema_prompt,
+                generated=generated,
+                max_rows=max_rows,
+                trace=trace,
+                warnings=warnings,
+                prompt_versions=prompt_versions,
+            )
+        )
         trace.append(TraceStep(name="execute_sql", status="ok", detail=f"{len(rows)} rows"))
 
         # 第四步：根据真实查询结果生成图表配置。
@@ -62,17 +138,28 @@ class DataAnalysisOrchestrator:
 
         # 第五步：基于查询结果生成业务结论。
         # 结论必须在 SQL 执行之后生成，避免模型脱离数据凭空分析。
-        insight = await generate_insight(request.question, safe_sql, columns, rows, self.llm)
-        trace.append(TraceStep(name="insight", status="ok"))
+        insight_result = await generate_insight(request.question, safe_sql, columns, rows, self.llm)
+        if insight_result.prompt_id and insight_result.prompt_version:
+            prompt_versions[insight_result.prompt_id] = insight_result.prompt_version
+        insight_trace_detail = None
+        if insight_result.prompt_id and insight_result.prompt_version:
+            insight_trace_detail = (
+                f"prompt={insight_result.prompt_id}@{insight_result.prompt_version}"
+            )
+        elif insight_result.used_fallback:
+            insight_trace_detail = "使用本地兜底总结"
+        trace.append(TraceStep(name="insight", status="ok", detail=insight_trace_detail))
 
         return QueryResponse(
             question=request.question,
             generated_sql=safe_sql,
-            sql_explanation=generated.explanation,
+            sql_explanation=final_sql_result.explanation,
             columns=columns,
             rows=rows,
             chart=chart,
-            insight=insight,
+            insight=insight_result.content,
             warnings=warnings,
             trace_steps=trace,
+            prompt_versions=prompt_versions,
+            repair_count=repair_count,
         )

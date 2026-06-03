@@ -1,9 +1,26 @@
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from app.core.database import rows_to_preview
 from app.core.llm import LLMClient
+from app.core.prompts import DEFAULT_PROMPT_VERSION, PromptRegistry, get_prompt_registry
+
+
+@dataclass
+class GeneratedInsight:
+    """分析总结生成结果。
+
+    content 是最终展示给用户的中文结论。
+    prompt_id 和 prompt_version 用于记录这次总结使用了哪个提示词版本。
+    used_fallback 表示是否走了本地兜底总结。
+    """
+
+    content: str
+    used_fallback: bool = False
+    prompt_id: str | None = None
+    prompt_version: str | None = None
 
 
 async def generate_insight(
@@ -12,7 +29,9 @@ async def generate_insight(
     columns: Sequence[str],
     rows: Sequence[dict[str, Any]],
     llm: LLMClient,
-) -> str:
+    prompt_registry: PromptRegistry | None = None,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+) -> GeneratedInsight:
     """基于查询结果生成业务分析结论。
 
     分析总结必须发生在 SQL 执行之后，这样模型看到的是数据库真实返回的 rows。
@@ -20,33 +39,36 @@ async def generate_insight(
     """
 
     if not rows:
-        return "没有查询到匹配的数据。可以尝试放宽时间范围、地区或其他筛选条件。"
+        return GeneratedInsight(
+            content="没有查询到匹配的数据。可以尝试放宽时间范围、地区或其他筛选条件。",
+            used_fallback=True,
+        )
 
     # 只把前 20 行发给模型，控制 prompt 长度。
     # API 仍然会把完整的、有上限的 rows 返回给前端。
     preview = rows_to_preview(rows, limit=20)
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "你是一名谨慎的业务数据分析师。请用简体中文写 3 到 5 句简洁结论。"
-                "只能使用查询结果中已经出现的事实，不要编造原因、数字或业务背景。"
-                "如果结果里出现 East China、North China、South China、West China，"
-                "请分别翻译成华东、华北、华南、西部。"
-            ),
+    registry = prompt_registry or get_prompt_registry()
+    rendered_prompt = registry.render_messages(
+        "insight_summary",
+        version=prompt_version,
+        variables={
+            "question": question,
+            "sql": sql,
+            "columns_json": json.dumps(list(columns), ensure_ascii=False),
+            "rows_json": json.dumps(preview, ensure_ascii=False),
         },
-        {
-            "role": "user",
-            "content": (
-                f"Question: {question}\nSQL: {sql}\nColumns: {list(columns)}\n"
-                f"Rows JSON: {json.dumps(preview, ensure_ascii=False)}"
-            ),
-        },
-    ]
-    text = await llm.complete_text(messages)
+    )
+    try:
+        text = await llm.complete_text(rendered_prompt.messages)
+    except Exception:
+        text = None
     if text:
-        return text.strip()
-    return fallback_insight(columns, rows)
+        return GeneratedInsight(
+            content=text.strip(),
+            prompt_id=rendered_prompt.prompt_id,
+            prompt_version=rendered_prompt.version,
+        )
+    return GeneratedInsight(content=fallback_insight(columns, rows), used_fallback=True)
 
 
 def fallback_insight(columns: Sequence[str], rows: Sequence[dict[str, Any]]) -> str:
