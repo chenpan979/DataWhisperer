@@ -1,0 +1,42 @@
+[
+  {
+    "id": "gmv_trend",
+    "question": "最近 6 个月 GMV 趋势",
+    "expected_metrics": ["GMV"],
+    "forbidden_metrics": ["复购率"],
+    "min_score": 1.0,
+    "tags": ["gmv", "trend"]
+  },
+  {
+    "id": "avg_order_value_by_region",
+    "question": "哪个地区客单价最高",
+    "expected_metrics": ["客单价"],
+    "forbidden_metrics": ["复购率"],
+    "min_score": 1.0,
+    "tags": ["aov", "region"]
+  },
+  {
+    "id": "repurchase_rate_by_industry",
+    "question": "复购率最高的客户行业",
+    "expected_metrics": ["复购率"],
+    "forbidden_metrics": ["GMV"],
+    "min_score": 1.0,
+    "tags": ["repurchase", "customer"]
+  },
+  {
+    "id": "order_count_by_region",
+    "question": "查询各地区订单数量",
+    "expected_metrics": ["订单数"],
+    "forbidden_metrics": ["客单价"],
+    "min_score": 1.0,
+    "tags": ["orders", "region"]
+  },
+  {
+    "id": "semantic_aov_expression",
+    "question": "比较不同地区平均每单消费水平",
+    "expected_metrics": ["客单价"],
+    "forbidden_metrics": ["复购率"],
+    "min_score": 0.2,
+    "tags": ["semantic", "aov"]
+  }
+]

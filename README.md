@@ -2,13 +2,15 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3：RAG 指标口径库版本**。
+当前项目已经更新到 **V3.2：RAG 指标口径库与指标检索评测版本**。
 
 版本入口：
 
 - `v1.0.0`：Text-to-SQL MVP，跑通自然语言查数、SQL 安全校验、查询执行、图表和分析结论。
 - `v2.0.0`：引入 PromptOps、SQL 自动修复和基础评测集，使系统具备更强的可治理、可追踪和可评测能力。
 - `v3.0.0`：引入本地指标口径库和轻量检索，将 GMV、销售额、客单价、订单数、复购率等业务定义注入 SQL 生成 prompt。
+- `v3.1.0`：升级为混合指标检索，结合关键词/别名命中和轻量 n-gram 相似度。
+- `v3.2.0`：新增指标检索评测集，验证问题是否命中正确业务指标。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -28,6 +30,8 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3 引入本地指标口径库，支持 GMV、销售额、客单价、订单数、复购率等业务指标检索。
 - SQL 生成和 SQL 修复 prompt 会注入检索到的指标口径，让模型按业务定义生成 SQL。
 - API 返回 `retrieved_metrics`，方便追踪本次问题参考了哪些业务指标定义。
+- V3.1 使用混合检索策略：关键词/别名精确匹配 + 本地 n-gram 语义相似度。
+- V3.2 增加指标检索评测集，检查指标召回是否正确、是否误召回禁止指标。
 
 ## 技术栈
 
@@ -92,6 +96,7 @@ docs/
   v3-rag-metrics-design.md V3 RAG 指标口径库设计说明
 evals/
   text_to_sql_cases.json 基础 Text-to-SQL 评测集
+  metric_retrieval_cases.json 指标检索评测集
 knowledge/
   metrics/              GMV、销售额、客单价、订单数、复购率等指标口径
 prompts/
@@ -279,11 +284,18 @@ ruff check .
 - SQL 自动修复链路
 - Text-to-SQL 基础评测集
 - RAG 指标口径检索
+- 指标检索评测集
 
 运行基础评测：
 
 ```powershell
 python -m app.evals.text_to_sql
+```
+
+运行指标检索评测：
+
+```powershell
+python -m app.evals.metric_retrieval
 ```
 
 当前评测结果：
@@ -299,7 +311,7 @@ pass_rate: 1.0
 
 可以用下面这段作为 1 分钟项目介绍：
 
-> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，使系统从“能跑通”进一步升级为“可治理、可追踪、可评测、能理解业务指标”的大模型工程项目。
+> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.1/V3.2 进一步补充混合检索和指标评测，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标”的大模型工程项目。
 
 更多讲解内容见：[docs/interview-guide.md](docs/interview-guide.md)。
 
@@ -354,6 +366,8 @@ uvicorn app.main:app --reload --port 8081
 - V1：Text-to-SQL MVP，跑通自然语言查数闭环。
 - V2：PromptOps 提示词治理、SQL 自动修复、基础 Text-to-SQL 评测集。
 - V3：RAG 指标口径库，支持 GMV、客单价、复购率等业务定义检索和 prompt 注入。
+- V3.1：混合指标检索，结合关键词/别名命中和轻量 n-gram 相似度。
+- V3.2：指标检索评测集，验证指标召回、误召回和报告输出。
 - V4：MCP 工具化，把数据库查询、图表生成、导出能力包装成工具。
 - V5：多智能体拆分，引入 Schema Analyst、SQL Engineer、Chart Designer、Report Writer。
 - V6：评测体系增强，增加真实 LLM 评测、SQL 正确率、修复成功率和分析结论质量评估。
