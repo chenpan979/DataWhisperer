@@ -2,11 +2,23 @@ const state = {
   examples: [],
   lastResponse: null,
   chart: null,
+  typeTimer: null,
+  processTimer: null,
   files: {
     schema: [],
     rag: [],
   },
 };
+
+const pendingProcessSteps = [
+  { name: "understand", title: "理解问题", detail: "识别用户想要分析的业务对象和指标。" },
+  { name: "schema", title: "读取数据结构", detail: "读取 MySQL 示例库中的表、字段和关系。" },
+  { name: "metric_retrieval", title: "检索指标口径", detail: "查找 GMV、销售额、客单价等业务定义。" },
+  { name: "generate_sql", title: "生成 SQL", detail: "结合 schema 和指标口径生成只读查询。" },
+  { name: "execute_sql", title: "执行查询", detail: "校验 SQL 安全性并返回结果数据。" },
+  { name: "chart", title: "生成图表", detail: "根据字段类型推荐可视化配置。" },
+  { name: "insight", title: "生成结论", detail: "基于查询结果生成简短业务分析。" },
+];
 
 const chartTypeLabels = {
   bar: "柱状图",
@@ -81,7 +93,12 @@ const el = {
   runState: document.querySelector("#runState"),
   insightText: document.querySelector("#insightText"),
   warningList: document.querySelector("#warningList"),
+  followupPanel: document.querySelector("#followupPanel"),
+  followupList: document.querySelector("#followupList"),
+  processTimeline: document.querySelector("#processTimeline"),
+  expandTimelineButton: document.querySelector("#expandTimelineButton"),
   chartHost: document.querySelector("#chartHost"),
+  chartInteraction: document.querySelector("#chartInteraction"),
   resultTable: document.querySelector("#resultTable"),
   sqlBlock: document.querySelector("#sqlBlock"),
   copySqlButton: document.querySelector("#copySqlButton"),
@@ -202,6 +219,8 @@ async function runAnalysis() {
   setRunState("分析中", "");
   el.runButton.disabled = true;
   el.runButton.querySelector("span").textContent = "分析中";
+  resetAnalysisResult(question);
+  startPendingProcess();
 
   try {
     const data = await fetchJson("/api/chat/query", {
@@ -215,7 +234,11 @@ async function runAnalysis() {
   } catch (error) {
     setRunState("失败", "error");
     el.insightText.textContent = error.message;
+    renderProcessTimeline(
+      pendingProcessSteps.map((step) => ({ ...step, status: step.name === "understand" ? "failed" : "pending" })),
+    );
   } finally {
+    stopPendingProcess();
     el.runButton.disabled = false;
     el.runButton.querySelector("span").textContent = "运行分析";
   }
@@ -227,13 +250,58 @@ function renderResponse(data) {
   el.metricChart.textContent = chartTypeLabels[data.chart?.type] || data.chart?.type || "-";
   el.metricTrace.textContent = data.trace_steps.length;
   el.activeQuestion.textContent = data.question;
-  el.insightText.textContent = data.insight;
   el.sqlBlock.textContent = data.generated_sql || "-- SQL unavailable";
 
   renderWarnings(data.warnings || []);
   renderTable(data.columns, data.rows);
   renderTrace(data.trace_steps || []);
+  renderProcessTimeline(normalizeTraceSteps(data.trace_steps || []));
   renderChart(data.chart, data.rows);
+  typeInsight(data.insight || "暂无分析结论。");
+  renderFollowups(generateFollowupQuestions(data));
+}
+
+function resetAnalysisResult(question) {
+  clearTypewriter();
+  el.metricRows.textContent = "0";
+  el.metricColumns.textContent = "0";
+  el.metricChart.textContent = "-";
+  el.metricTrace.textContent = "0";
+  el.activeQuestion.textContent = question;
+  el.insightText.textContent = "正在分析，请稍候";
+  el.insightText.classList.add("streaming");
+  el.warningList.innerHTML = "";
+  el.followupPanel.hidden = true;
+  el.followupList.innerHTML = "";
+  el.sqlBlock.textContent = "-- SQL will appear here";
+  el.traceList.innerHTML = "";
+  renderTable([], []);
+  renderChartSkeleton();
+}
+
+function startPendingProcess() {
+  let activeIndex = 0;
+  renderProcessTimeline(
+    pendingProcessSteps.map((step, index) => ({
+      ...step,
+      status: index === 0 ? "active" : "pending",
+    })),
+  );
+  clearInterval(state.processTimer);
+  state.processTimer = setInterval(() => {
+    activeIndex = Math.min(activeIndex + 1, pendingProcessSteps.length - 1);
+    renderProcessTimeline(
+      pendingProcessSteps.map((step, index) => ({
+        ...step,
+        status: index < activeIndex ? "ok" : index === activeIndex ? "active" : "pending",
+      })),
+    );
+  }, 900);
+}
+
+function stopPendingProcess() {
+  clearInterval(state.processTimer);
+  state.processTimer = null;
 }
 
 function renderWarnings(warnings) {
@@ -245,6 +313,11 @@ function renderWarnings(warnings) {
 function renderTable(columns, rows) {
   const thead = el.resultTable.querySelector("thead");
   const tbody = el.resultTable.querySelector("tbody");
+  if (!columns.length) {
+    thead.innerHTML = "";
+    tbody.innerHTML = `<tr><td><div class="inline-empty">暂无数据</div></td></tr>`;
+    return;
+  }
   thead.innerHTML = `<tr>${columns.map((column) => `<th>${escapeHtml(labelForColumn(column))}</th>`).join("")}</tr>`;
   tbody.innerHTML = rows
     .map(
@@ -273,6 +346,39 @@ function renderTrace(steps) {
     .join("");
 }
 
+function renderProcessTimeline(steps) {
+  if (!steps.length) {
+    el.processTimeline.innerHTML = '<li class="timeline-empty">暂无执行过程</li>';
+    return;
+  }
+  el.processTimeline.innerHTML = steps
+    .map((step, index) => {
+      const detail = step.detail || "暂无更多细节。";
+      const expanded = index === steps.length - 1 || step.status === "active";
+      return `
+        <li class="timeline-item ${escapeHtml(step.status || "pending")}">
+          <button class="timeline-head" type="button" aria-expanded="${expanded ? "true" : "false"}">
+            <span class="timeline-dot">${index + 1}</span>
+            <span class="timeline-title">${escapeHtml(step.title || labelForStep(step.name))}</span>
+            <span class="timeline-status">${escapeHtml(labelForStatus(step.status || "pending"))}</span>
+            <svg><use href="#icon-chevron"></use></svg>
+          </button>
+          <div class="timeline-detail" ${expanded ? "" : "hidden"}>${escapeHtml(detail)}</div>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+function normalizeTraceSteps(steps) {
+  return steps.map((step) => ({
+    name: step.name,
+    title: labelForStep(step.name),
+    status: step.status,
+    detail: step.detail || "该步骤已完成。",
+  }));
+}
+
 function renderChart(chartOption, rows) {
   if (state.chart) {
     state.chart.dispose();
@@ -285,6 +391,7 @@ function renderChart(chartOption, rows) {
   if (!rows.length || chartOption?.type === "empty") {
     el.chartHost.classList.add("empty-chart");
     el.chartHost.innerHTML = '<div class="empty-state">暂无图表</div>';
+    el.chartInteraction.textContent = "暂无可交互数据。";
     return;
   }
 
@@ -295,11 +402,27 @@ function renderChart(chartOption, rows) {
     chartNode.className = "chart-canvas";
     el.chartHost.appendChild(chartNode);
     state.chart = window.echarts.init(chartNode);
-    state.chart.setOption(localizedOption, true);
+    state.chart.setOption(enhanceChartOption(localizedOption), true);
+    state.chart.on("click", handleChartClick);
+    el.chartInteraction.textContent = "可悬停查看数据，点击图表元素查看明细。";
     return;
   }
 
   renderFallbackChart(localizedOption);
+}
+
+function renderChartSkeleton() {
+  if (state.chart) {
+    state.chart.dispose();
+    state.chart = null;
+  }
+  el.chartHost.classList.add("empty-chart");
+  el.chartHost.innerHTML = `
+    <div class="chart-skeleton">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+  `;
+  el.chartInteraction.textContent = "正在准备图表区域。";
 }
 
 function localizeChartOption(chartOption) {
@@ -327,6 +450,46 @@ function localizeChartOption(chartOption) {
     });
   }
   return option;
+}
+
+function enhanceChartOption(option) {
+  const enhanced = JSON.parse(JSON.stringify(option || {}));
+  enhanced.animationDuration = 520;
+  enhanced.animationEasing = "cubicOut";
+  enhanced.tooltip = {
+    trigger: enhanced.xAxis ? "axis" : "item",
+    confine: true,
+    ...enhanced.tooltip,
+  };
+  const toolboxFeature = {
+    restore: {},
+    saveAsImage: {},
+  };
+  if (enhanced.xAxis) {
+    toolboxFeature.dataZoom = { yAxisIndex: "none" };
+  }
+  enhanced.toolbox = {
+    right: 8,
+    feature: toolboxFeature,
+  };
+  if (enhanced.xAxis && !enhanced.dataZoom) {
+    enhanced.dataZoom = [
+      { type: "inside", throttle: 50 },
+      { type: "slider", height: 18, bottom: 6 },
+    ];
+    enhanced.grid = {
+      ...(enhanced.grid || {}),
+      bottom: 54,
+      containLabel: true,
+    };
+  }
+  return enhanced;
+}
+
+function handleChartClick(params) {
+  const label = params.name || params.seriesName || "选中项";
+  const value = Array.isArray(params.value) ? params.value.join(" / ") : params.value;
+  el.chartInteraction.textContent = `已选中：${label}，数值：${formatCell(value)}。可以基于这个点继续追问。`;
 }
 
 function renderFallbackChart(chartOption) {
@@ -362,6 +525,23 @@ function switchTab(tabName) {
   if (tabName === "chart" && state.chart) {
     setTimeout(() => state.chart.resize(), 0);
   }
+}
+
+function toggleTimelineItem(button) {
+  const detail = button.parentElement.querySelector(".timeline-detail");
+  const expanded = button.getAttribute("aria-expanded") === "true";
+  button.setAttribute("aria-expanded", String(!expanded));
+  detail.hidden = expanded;
+}
+
+function toggleAllTimelineItems() {
+  const details = el.processTimeline.querySelectorAll(".timeline-detail");
+  const shouldExpand = Array.from(details).some((detail) => detail.hidden);
+  details.forEach((detail) => {
+    detail.hidden = !shouldExpand;
+    detail.parentElement.querySelector(".timeline-head").setAttribute("aria-expanded", String(shouldExpand));
+  });
+  el.expandTimelineButton.querySelector("span").textContent = shouldExpand ? "收起全部" : "展开全部";
 }
 
 function switchView(viewId) {
@@ -498,6 +678,72 @@ async function copySql() {
   }, 1200);
 }
 
+function typeInsight(text) {
+  clearTypewriter();
+  el.insightText.textContent = "";
+  el.insightText.classList.add("streaming");
+  let index = 0;
+  state.typeTimer = setInterval(() => {
+    const chunk = text.slice(index, index + 2);
+    el.insightText.textContent += chunk;
+    index += 2;
+    if (index >= text.length) {
+      clearTypewriter();
+      el.insightText.classList.remove("streaming");
+    }
+  }, 18);
+}
+
+function clearTypewriter() {
+  clearInterval(state.typeTimer);
+  state.typeTimer = null;
+}
+
+function generateFollowupQuestions(data) {
+  const question = data.question || "本次分析";
+  const columns = new Set(data.columns || []);
+  const chartType = data.chart?.type;
+  const suggestions = [];
+
+  if (columns.has("region_name")) {
+    suggestions.push("按地区继续拆分到商品品类看差异。");
+  }
+  if (columns.has("product_name") || columns.has("category")) {
+    suggestions.push("找出贡献最高和最低的商品，并解释原因。");
+  }
+  if (columns.has("month") || chartType === "line") {
+    suggestions.push("对最近 6 个月趋势做环比变化分析。");
+  }
+  if (columns.has("sales_amount") || columns.has("amount_change")) {
+    suggestions.push("把销售额变化最大的对象单独列出来。");
+  }
+  if (columns.has("avg_order_value")) {
+    suggestions.push("比较不同地区客单价差异，并给出可能原因。");
+  }
+  suggestions.push(`基于“${question}”继续给出下一步经营建议。`);
+  suggestions.push("把本次结果按销售额从高到低重新排序。");
+  suggestions.push("找出异常值，并说明可能的业务原因。");
+
+  return [...new Set(suggestions)].slice(0, 5);
+}
+
+function renderFollowups(suggestions) {
+  if (!suggestions.length) {
+    el.followupPanel.hidden = true;
+    return;
+  }
+  el.followupPanel.hidden = false;
+  el.followupList.innerHTML = suggestions
+    .map(
+      (question) => `
+        <button class="followup-chip" type="button" data-question="${escapeHtml(question)}">
+          ${escapeHtml(question)}
+        </button>
+      `,
+    )
+    .join("");
+}
+
 function formatCell(value) {
   if (value === null || value === undefined) {
     return "";
@@ -552,6 +798,8 @@ function labelForStep(step) {
 
 function labelForStatus(status) {
   const labels = {
+    active: "进行中",
+    pending: "等待",
     ok: "成功",
     failed: "失败",
     retry: "重试",
@@ -573,6 +821,22 @@ function bindEvents() {
   el.refreshExamplesButton.addEventListener("click", loadExamples);
   el.loadSchemaButton.addEventListener("click", loadSchema);
   el.copySqlButton.addEventListener("click", copySql);
+  el.expandTimelineButton.addEventListener("click", toggleAllTimelineItems);
+  el.processTimeline.addEventListener("click", (event) => {
+    const button = event.target.closest(".timeline-head");
+    if (button) {
+      toggleTimelineItem(button);
+    }
+  });
+  el.followupList.addEventListener("click", (event) => {
+    const button = event.target.closest(".followup-chip");
+    if (!button) {
+      return;
+    }
+    el.questionInput.value = button.dataset.question;
+    switchView("analysisView");
+    el.questionInput.focus();
+  });
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
 
@@ -627,5 +891,6 @@ function bindEvents() {
 bindEvents();
 checkHealth();
 loadExamples();
+renderProcessTimeline([]);
 loadManagedFiles("schema");
 loadManagedFiles("rag");

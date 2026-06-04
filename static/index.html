@@ -57,6 +57,13 @@
         <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"></path>
         <circle cx="12" cy="12" r="3"></circle>
       </symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24">
+        <path d="m6 9 6 6 6-6"></path>
+      </symbol>
+      <symbol id="icon-sparkle" viewBox="0 0 24 24">
+        <path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7Z"></path>
+        <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"></path>
+      </symbol>
     </svg>
 
     <div class="app-shell">
@@ -178,6 +185,26 @@
                   </div>
                   <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
                   <div class="warning-list" id="warningList"></div>
+                  <div class="followup-panel" id="followupPanel" hidden>
+                    <div class="followup-heading">
+                      <svg><use href="#icon-sparkle"></use></svg>
+                      <span>继续追问</span>
+                    </div>
+                    <div class="followup-list" id="followupList"></div>
+                  </div>
+                </section>
+
+                <section class="panel process-panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>分析过程</h2>
+                      <p>从理解问题到生成结果的完整链路</p>
+                    </div>
+                    <button class="secondary-button" id="expandTimelineButton" type="button">
+                      <span>展开全部</span>
+                    </button>
+                  </div>
+                  <ol class="process-timeline" id="processTimeline"></ol>
                 </section>
 
                 <section class="panel">
@@ -192,6 +219,7 @@
                     <div class="chart-host empty-chart" id="chartHost">
                       <div class="empty-state">暂无图表</div>
                     </div>
+                    <div class="chart-interaction" id="chartInteraction">可悬停查看数据，点击图表元素查看明细。</div>
                   </div>
 
                   <div class="tab-panel" id="tablePanel">
@@ -214,7 +242,7 @@
                   </div>
 
                   <div class="tab-panel" id="tracePanel">
-                    <ol class="trace-list" id="traceList"></ol>
+                    <ol class="trace-list compact" id="traceList"></ol>
                   </div>
                 </section>
               </section>
