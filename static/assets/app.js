@@ -97,6 +97,7 @@ const el = {
   followupPanel: document.querySelector("#followupPanel"),
   followupList: document.querySelector("#followupList"),
   processPanel: document.querySelector("#processPanel"),
+  processSummary: document.querySelector("#processSummary"),
   processTimeline: document.querySelector("#processTimeline"),
   toggleProcessButton: document.querySelector("#toggleProcessButton"),
   chartHost: document.querySelector("#chartHost"),
@@ -331,6 +332,7 @@ function renderTable(columns, rows) {
 }
 
 function renderProcessTimeline(steps) {
+  updateProcessSummary(steps);
   if (!steps.length) {
     el.processTimeline.innerHTML = '<li class="timeline-empty">暂无执行过程</li>';
     return;
@@ -352,6 +354,33 @@ function renderProcessTimeline(steps) {
       `;
     })
     .join("");
+}
+
+function updateProcessSummary(steps) {
+  if (!steps.length) {
+    el.processSummary.textContent = "从理解问题到生成结果的完整链路，运行后会显示当前进度。";
+    el.processSummary.className = "process-summary";
+    return;
+  }
+
+  const failedStep = steps.find((step) => step.status === "failed");
+  if (failedStep) {
+    el.processSummary.textContent = `执行到「${failedStep.title || labelForStep(failedStep.name)}」时失败，可展开查看具体原因。`;
+    el.processSummary.className = "process-summary failed";
+    return;
+  }
+
+  const activeStep = steps.find((step) => step.status === "active");
+  if (activeStep) {
+    const okCount = steps.filter((step) => step.status === "ok").length;
+    el.processSummary.textContent = `正在处理：${activeStep.title || labelForStep(activeStep.name)}，已完成 ${okCount}/${steps.length} 步。`;
+    el.processSummary.className = "process-summary working";
+    return;
+  }
+
+  const okCount = steps.filter((step) => step.status === "ok").length;
+  el.processSummary.textContent = `已完成 ${okCount}/${steps.length} 个步骤，点击“查看过程”可以展开完整链路。`;
+  el.processSummary.className = "process-summary ok";
 }
 
 function normalizeTraceSteps(steps) {

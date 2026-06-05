@@ -476,7 +476,6 @@ input:focus {
 
 .insight-panel {
   min-height: 142px;
-  overflow: hidden;
 }
 
 .insight-text {
@@ -484,11 +483,8 @@ input:focus {
   font-size: 15px;
   line-height: 1.7;
   margin: 0;
-  max-height: 128px;
-  overflow-y: auto;
   overflow-wrap: anywhere;
-  padding-right: 6px;
-  scrollbar-gutter: stable;
+  white-space: normal;
 }
 
 .warning-list {
@@ -720,6 +716,36 @@ td {
 
 .process-panel.collapsed .process-timeline {
   display: none;
+}
+
+.process-summary {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 8px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+.process-summary::before {
+  background: var(--line);
+  border-radius: 999px;
+  content: "";
+  height: 7px;
+  width: 7px;
+}
+
+.process-summary.working::before {
+  animation: pulse 1.2s ease-in-out infinite;
+  background: var(--blue);
+}
+
+.process-summary.ok::before {
+  background: var(--accent);
+}
+
+.process-summary.failed::before {
+  background: var(--danger);
 }
 
 .process-timeline {
