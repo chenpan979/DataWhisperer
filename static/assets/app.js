@@ -4,6 +4,7 @@ const state = {
   chart: null,
   typeTimer: null,
   processTimer: null,
+  processOpen: false,
   files: {
     schema: [],
     rag: [],
@@ -95,14 +96,14 @@ const el = {
   warningList: document.querySelector("#warningList"),
   followupPanel: document.querySelector("#followupPanel"),
   followupList: document.querySelector("#followupList"),
+  processPanel: document.querySelector("#processPanel"),
   processTimeline: document.querySelector("#processTimeline"),
-  expandTimelineButton: document.querySelector("#expandTimelineButton"),
+  toggleProcessButton: document.querySelector("#toggleProcessButton"),
   chartHost: document.querySelector("#chartHost"),
   chartInteraction: document.querySelector("#chartInteraction"),
   resultTable: document.querySelector("#resultTable"),
   sqlBlock: document.querySelector("#sqlBlock"),
   copySqlButton: document.querySelector("#copySqlButton"),
-  traceList: document.querySelector("#traceList"),
   tabs: document.querySelectorAll(".tab"),
   tabPanels: document.querySelectorAll(".tab-panel"),
   navItems: document.querySelectorAll(".nav-item"),
@@ -254,7 +255,6 @@ function renderResponse(data) {
 
   renderWarnings(data.warnings || []);
   renderTable(data.columns, data.rows);
-  renderTrace(data.trace_steps || []);
   renderProcessTimeline(normalizeTraceSteps(data.trace_steps || []));
   renderChart(data.chart, data.rows);
   typeInsight(data.insight || "暂无分析结论。");
@@ -274,7 +274,7 @@ function resetAnalysisResult(question) {
   el.followupPanel.hidden = true;
   el.followupList.innerHTML = "";
   el.sqlBlock.textContent = "-- SQL will appear here";
-  el.traceList.innerHTML = "";
+  setProcessOpen(false);
   renderTable([], []);
   renderChartSkeleton();
 }
@@ -330,22 +330,6 @@ function renderTable(columns, rows) {
     .join("");
 }
 
-function renderTrace(steps) {
-  el.traceList.innerHTML = steps
-    .map(
-      (step, index) => `
-        <li>
-          <span class="trace-index">${index + 1}</span>
-          <div>
-            <div class="trace-title">${escapeHtml(labelForStep(step.name))} · ${escapeHtml(labelForStatus(step.status))}</div>
-            <div class="trace-detail">${escapeHtml(step.detail || "")}</div>
-          </div>
-        </li>
-      `,
-    )
-    .join("");
-}
-
 function renderProcessTimeline(steps) {
   if (!steps.length) {
     el.processTimeline.innerHTML = '<li class="timeline-empty">暂无执行过程</li>';
@@ -354,7 +338,7 @@ function renderProcessTimeline(steps) {
   el.processTimeline.innerHTML = steps
     .map((step, index) => {
       const detail = step.detail || "暂无更多细节。";
-      const expanded = index === steps.length - 1 || step.status === "active";
+      const expanded = false;
       return `
         <li class="timeline-item ${escapeHtml(step.status || "pending")}">
           <button class="timeline-head" type="button" aria-expanded="${expanded ? "true" : "false"}">
@@ -534,14 +518,14 @@ function toggleTimelineItem(button) {
   detail.hidden = expanded;
 }
 
-function toggleAllTimelineItems() {
-  const details = el.processTimeline.querySelectorAll(".timeline-detail");
-  const shouldExpand = Array.from(details).some((detail) => detail.hidden);
-  details.forEach((detail) => {
-    detail.hidden = !shouldExpand;
-    detail.parentElement.querySelector(".timeline-head").setAttribute("aria-expanded", String(shouldExpand));
-  });
-  el.expandTimelineButton.querySelector("span").textContent = shouldExpand ? "收起全部" : "展开全部";
+function setProcessOpen(open) {
+  state.processOpen = open;
+  el.processPanel.classList.toggle("collapsed", !open);
+  el.toggleProcessButton.querySelector("span").textContent = open ? "收起过程" : "查看过程";
+}
+
+function toggleProcessPanel() {
+  setProcessOpen(!state.processOpen);
 }
 
 function switchView(viewId) {
@@ -686,6 +670,7 @@ function typeInsight(text) {
   state.typeTimer = setInterval(() => {
     const chunk = text.slice(index, index + 2);
     el.insightText.textContent += chunk;
+    el.insightText.scrollTop = el.insightText.scrollHeight;
     index += 2;
     if (index >= text.length) {
       clearTypewriter();
@@ -821,7 +806,7 @@ function bindEvents() {
   el.refreshExamplesButton.addEventListener("click", loadExamples);
   el.loadSchemaButton.addEventListener("click", loadSchema);
   el.copySqlButton.addEventListener("click", copySql);
-  el.expandTimelineButton.addEventListener("click", toggleAllTimelineItems);
+  el.toggleProcessButton.addEventListener("click", toggleProcessPanel);
   el.processTimeline.addEventListener("click", (event) => {
     const button = event.target.closest(".timeline-head");
     if (button) {

@@ -476,6 +476,7 @@ input:focus {
 
 .insight-panel {
   min-height: 142px;
+  overflow: hidden;
 }
 
 .insight-text {
@@ -483,6 +484,11 @@ input:focus {
   font-size: 15px;
   line-height: 1.7;
   margin: 0;
+  max-height: 128px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
 }
 
 .warning-list {
@@ -700,51 +706,20 @@ td {
   white-space: pre-wrap;
 }
 
-.trace-list {
-  display: grid;
-  gap: 10px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.trace-list li {
-  align-items: flex-start;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: grid;
-  gap: 4px;
-  grid-template-columns: 26px 1fr;
-  padding: 10px;
-}
-
-.trace-list.compact li {
-  box-shadow: none;
-}
-
-.trace-index {
-  align-items: center;
-  background: var(--surface-2);
-  border-radius: 999px;
-  color: var(--accent-strong);
-  display: flex;
-  font-size: 12px;
-  height: 24px;
-  justify-content: center;
-  width: 24px;
-}
-
-.trace-title {
-  font-weight: 700;
-}
-
-.trace-detail {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .process-panel {
   padding-bottom: 12px;
+}
+
+.process-panel.collapsed {
+  padding-bottom: 16px;
+}
+
+.process-panel.collapsed .panel-heading {
+  margin-bottom: 0;
+}
+
+.process-panel.collapsed .process-timeline {
+  display: none;
 }
 
 .process-timeline {

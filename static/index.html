@@ -194,14 +194,14 @@
                   </div>
                 </section>
 
-                <section class="panel process-panel">
+                <section class="panel process-panel collapsed" id="processPanel">
                   <div class="panel-heading">
                     <div>
                       <h2>分析过程</h2>
                       <p>从理解问题到生成结果的完整链路</p>
                     </div>
-                    <button class="secondary-button" id="expandTimelineButton" type="button">
-                      <span>展开全部</span>
+                    <button class="secondary-button" id="toggleProcessButton" type="button">
+                      <span>查看过程</span>
                     </button>
                   </div>
                   <ol class="process-timeline" id="processTimeline"></ol>
@@ -212,7 +212,6 @@
                     <button class="tab active" data-tab="chart" type="button">图表</button>
                     <button class="tab" data-tab="table" type="button">表格</button>
                     <button class="tab" data-tab="sql" type="button">SQL</button>
-                    <button class="tab" data-tab="trace" type="button">轨迹</button>
                   </div>
 
                   <div class="tab-panel active" id="chartPanel">
@@ -239,10 +238,6 @@
                       </button>
                     </div>
                     <pre class="sql-block" id="sqlBlock">-- SQL will appear here</pre>
-                  </div>
-
-                  <div class="tab-panel" id="tracePanel">
-                    <ol class="trace-list compact" id="traceList"></ol>
                   </div>
                 </section>
               </section>
