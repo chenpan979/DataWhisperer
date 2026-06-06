@@ -29,6 +29,22 @@
         <rect x="9" y="9" width="13" height="13" rx="2"></rect>
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
       </symbol>
+      <symbol id="icon-wand" viewBox="0 0 24 24">
+        <path d="M15 4V2"></path>
+        <path d="M15 16v-2"></path>
+        <path d="M8 9H6"></path>
+        <path d="M20 9h-2"></path>
+        <path d="m17.8 6.2 1.4-1.4"></path>
+        <path d="m10.8 13.2-1.4 1.4"></path>
+        <path d="m10.8 4.8-1.4-1.4"></path>
+        <path d="m17.8 11.8 1.4 1.4"></path>
+        <path d="M2 22 22 2"></path>
+      </symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24">
+        <path d="M12 3v12"></path>
+        <path d="m7 10 5 5 5-5"></path>
+        <path d="M5 21h14"></path>
+      </symbol>
       <symbol id="icon-check" viewBox="0 0 24 24">
         <path d="M20 6 9 17l-5-5"></path>
       </symbol>
@@ -234,12 +250,26 @@
 
                   <div class="tab-panel" id="sqlPanel">
                     <div class="code-toolbar">
-                      <span>执行 SQL</span>
-                      <button class="icon-button" id="copySqlButton" type="button" title="复制 SQL">
-                        <svg><use href="#icon-copy"></use></svg>
-                      </button>
+                      <div>
+                        <span>执行 SQL</span>
+                        <small id="sqlMeta">0 行</small>
+                      </div>
+                      <div class="code-actions">
+                        <button class="icon-button" id="formatSqlButton" type="button" title="格式化 SQL">
+                          <svg><use href="#icon-wand"></use></svg>
+                        </button>
+                        <button class="icon-button" id="downloadSqlButton" type="button" title="下载 SQL">
+                          <svg><use href="#icon-download"></use></svg>
+                        </button>
+                        <button class="icon-button" id="copySqlButton" type="button" title="复制 SQL">
+                          <svg><use href="#icon-copy"></use></svg>
+                        </button>
+                      </div>
                     </div>
-                    <pre class="sql-block" id="sqlBlock">-- SQL will appear here</pre>
+                    <div class="sql-viewer" id="sqlViewer">
+                      <pre class="sql-line-numbers" id="sqlLineNumbers" aria-hidden="true">1</pre>
+                      <pre class="sql-block"><code id="sqlBlock">-- SQL will appear here</code></pre>
+                    </div>
                   </div>
                 </section>
               </section>

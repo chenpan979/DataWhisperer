@@ -5,6 +5,7 @@ const state = {
   typeTimer: null,
   processTimer: null,
   processOpen: false,
+  currentSql: "-- SQL will appear here",
   files: {
     schema: [],
     rag: [],
@@ -105,6 +106,10 @@ const el = {
   chartInteraction: document.querySelector("#chartInteraction"),
   resultTable: document.querySelector("#resultTable"),
   sqlBlock: document.querySelector("#sqlBlock"),
+  sqlLineNumbers: document.querySelector("#sqlLineNumbers"),
+  sqlMeta: document.querySelector("#sqlMeta"),
+  formatSqlButton: document.querySelector("#formatSqlButton"),
+  downloadSqlButton: document.querySelector("#downloadSqlButton"),
   copySqlButton: document.querySelector("#copySqlButton"),
   tabs: document.querySelectorAll(".tab"),
   tabPanels: document.querySelectorAll(".tab-panel"),
@@ -253,7 +258,7 @@ function renderResponse(data) {
   el.metricChart.textContent = chartTypeLabels[data.chart?.type] || data.chart?.type || "-";
   el.metricTrace.textContent = data.trace_steps.length;
   el.activeQuestion.textContent = data.question;
-  el.sqlBlock.textContent = data.generated_sql || "-- SQL unavailable";
+  setSqlContent(data.generated_sql || "-- SQL unavailable");
 
   renderWarnings(data.warnings || []);
   renderTable(data.columns, data.rows);
@@ -277,7 +282,7 @@ function resetAnalysisResult(question) {
   el.followupToggle.hidden = true;
   setFollowupsOpen(false);
   el.followupList.innerHTML = "";
-  el.sqlBlock.textContent = "-- SQL will appear here";
+  setSqlContent("-- SQL will appear here");
   setProcessOpen(false);
   renderTable([], []);
   renderChartSkeleton();
@@ -683,8 +688,8 @@ function resetPreview(category) {
 }
 
 async function copySql() {
-  const sql = el.sqlBlock.textContent;
-  if (!sql || sql.startsWith("--")) {
+  const sql = state.currentSql;
+  if (isPlaceholderSql(sql)) {
     return;
   }
   await navigator.clipboard.writeText(sql);
@@ -692,6 +697,147 @@ async function copySql() {
   setTimeout(() => {
     el.copySqlButton.innerHTML = '<svg><use href="#icon-copy"></use></svg>';
   }, 1200);
+}
+
+function setSqlContent(sql) {
+  state.currentSql = sql || "-- SQL unavailable";
+  const lines = state.currentSql.split(/\r?\n/);
+  el.sqlBlock.innerHTML = highlightSql(state.currentSql);
+  el.sqlLineNumbers.textContent = lines.map((_, index) => index + 1).join("\n");
+  el.sqlMeta.textContent = `${lines.length} 行 · ${isPlaceholderSql(state.currentSql) ? "等待生成" : "只读查询"}`;
+}
+
+function formatCurrentSql() {
+  if (isPlaceholderSql(state.currentSql)) {
+    return;
+  }
+  setSqlContent(formatSqlText(state.currentSql));
+}
+
+function downloadSql() {
+  if (isPlaceholderSql(state.currentSql)) {
+    return;
+  }
+  const blob = new Blob([state.currentSql], { type: "text/sql;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `datawhisperer-query-${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.sql`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function isPlaceholderSql(sql) {
+  return !sql || sql.trim().startsWith("-- SQL");
+}
+
+function formatSqlText(sql) {
+  const stringLiterals = [];
+  const protectedSql = sql.replace(/'(?:''|[^'])*'/g, (literal) => {
+    const key = `__SQL_STRING_${stringLiterals.length}__`;
+    stringLiterals.push(literal);
+    return key;
+  });
+  const compact = protectedSql.trim().replace(/\s+/g, " ");
+  const clausePattern =
+    /\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|INNER JOIN|LEFT JOIN|RIGHT JOIN|JOIN|ON|AND|OR)\b/gi;
+  const formatted = compact
+    .replace(clausePattern, (match) => `\n${match.toUpperCase()}`)
+    .replace(/,\s*/g, ",\n  ")
+    .replace(/^\n/, "")
+    .replace(/\n(AND|OR)\b/g, "\n  $1");
+  return formatted.replace(/__SQL_STRING_(\d+)__/g, (_, index) => stringLiterals[Number(index)]);
+}
+
+function highlightSql(sql) {
+  const keywords = new Set([
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "JOIN",
+    "INNER",
+    "LEFT",
+    "RIGHT",
+    "FULL",
+    "OUTER",
+    "ON",
+    "AND",
+    "OR",
+    "GROUP",
+    "BY",
+    "ORDER",
+    "HAVING",
+    "LIMIT",
+    "AS",
+    "DESC",
+    "ASC",
+    "DISTINCT",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "END",
+    "INTERVAL",
+  ]);
+  const functions = new Set([
+    "COUNT",
+    "SUM",
+    "AVG",
+    "MIN",
+    "MAX",
+    "ROUND",
+    "DATE_FORMAT",
+    "DATE_SUB",
+    "CURRENT_DATE",
+    "NOW",
+    "YEAR",
+    "MONTH",
+    "CONCAT",
+    "CAST",
+    "COALESCE",
+    "IFNULL",
+    "NULLIF",
+  ]);
+  const tokenPattern =
+    /(--[^\n]*|'(?:''|[^'])*'|`[^`]*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b|[(),.*=<>+\-/])/g;
+  let cursor = 0;
+  let html = "";
+  for (const match of sql.matchAll(tokenPattern)) {
+    const token = match[0];
+    html += escapeHtml(sql.slice(cursor, match.index));
+    html += renderSqlToken(token, keywords, functions);
+    cursor = match.index + token.length;
+  }
+  html += escapeHtml(sql.slice(cursor));
+  return html;
+}
+
+function renderSqlToken(token, keywords, functions) {
+  const upper = token.toUpperCase();
+  if (token.startsWith("--")) {
+    return `<span class="sql-comment">${escapeHtml(token)}</span>`;
+  }
+  if (token.startsWith("'")) {
+    return `<span class="sql-string">${escapeHtml(token)}</span>`;
+  }
+  if (token.startsWith("`")) {
+    return `<span class="sql-identifier">${escapeHtml(token)}</span>`;
+  }
+  if (/^\d/.test(token)) {
+    return `<span class="sql-number">${escapeHtml(token)}</span>`;
+  }
+  if (functions.has(upper)) {
+    return `<span class="sql-function">${escapeHtml(token)}</span>`;
+  }
+  if (keywords.has(upper)) {
+    return `<span class="sql-keyword">${escapeHtml(token)}</span>`;
+  }
+  if (/^[(),.*=<>+\-/]$/.test(token)) {
+    return `<span class="sql-operator">${escapeHtml(token)}</span>`;
+  }
+  return `<span class="sql-name">${escapeHtml(token)}</span>`;
 }
 
 function typeInsight(text) {
@@ -852,6 +998,8 @@ function bindEvents() {
   el.runButton.addEventListener("click", runAnalysis);
   el.refreshExamplesButton.addEventListener("click", loadExamples);
   el.loadSchemaButton.addEventListener("click", loadSchema);
+  el.formatSqlButton.addEventListener("click", formatCurrentSql);
+  el.downloadSqlButton.addEventListener("click", downloadSql);
   el.copySqlButton.addEventListener("click", copySql);
   el.toggleProcessButton.addEventListener("click", toggleProcessPanel);
   el.followupToggle.addEventListener("click", toggleFollowups);
@@ -922,6 +1070,7 @@ function bindEvents() {
 }
 
 bindEvents();
+setSqlContent(state.currentSql);
 checkHealth();
 loadExamples();
 renderProcessTimeline([]);

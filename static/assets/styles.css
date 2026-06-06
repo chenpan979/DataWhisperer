@@ -702,24 +702,97 @@ td {
   align-items: center;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
-.code-toolbar span {
+.code-toolbar span,
+.code-toolbar small {
   color: var(--muted);
   font-size: 13px;
 }
 
-.sql-block {
-  background: #101816;
+.code-toolbar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.code-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sql-viewer {
+  background: #fbfcfc;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  color: #d9eee8;
-  line-height: 1.6;
-  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   max-height: 430px;
   overflow: auto;
-  padding: 14px;
-  white-space: pre-wrap;
+}
+
+.sql-line-numbers,
+.sql-block {
+  font-family:
+    "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  margin: 0;
+  tab-size: 2;
+}
+
+.sql-line-numbers {
+  background: #eef5f2;
+  border-right: 1px solid var(--line);
+  color: #7b8a84;
+  min-width: 48px;
+  padding: 16px 12px;
+  text-align: right;
+  user-select: none;
+}
+
+.sql-block {
+  color: #24302c;
+  min-width: max-content;
+  overflow: visible;
+  padding: 16px 18px;
+  white-space: pre;
+}
+
+.sql-block code {
+  display: block;
+}
+
+.sql-keyword {
+  color: #0b5f59;
+  font-weight: 800;
+}
+
+.sql-function {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.sql-string {
+  color: #a15c07;
+}
+
+.sql-number {
+  color: #7c3aed;
+}
+
+.sql-identifier,
+.sql-name {
+  color: #263530;
+}
+
+.sql-operator {
+  color: #64748b;
+}
+
+.sql-comment {
+  color: #8a978f;
+  font-style: italic;
 }
 
 .process-panel {
