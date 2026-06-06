@@ -53,6 +53,12 @@
         <path d="M3 10h18"></path>
         <path d="M9 5v16"></path>
       </symbol>
+      <symbol id="icon-file-text" viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path>
+        <path d="M14 2v6h6"></path>
+        <path d="M8 13h8"></path>
+        <path d="M8 17h5"></path>
+      </symbol>
       <symbol id="icon-brain" viewBox="0 0 24 24">
         <path d="M8 6a3 3 0 0 1 5-2.2A3 3 0 0 1 18 6a4 4 0 0 1-1 7.8V18a3 3 0 0 1-5 2.2A3 3 0 0 1 7 18v-4.2A4 4 0 0 1 8 6Z"></path>
         <path d="M12 4v16"></path>
@@ -290,10 +296,21 @@
                   </button>
                 </div>
 
-                <section class="upload-zone">
-                  <div>
+                <section class="upload-zone" id="schemaUploadZone">
+                  <div class="upload-art">
+                    <svg><use href="#icon-file-text"></use></svg>
+                  </div>
+                  <div class="upload-copy">
                     <strong>上传数据结构文件</strong>
-                    <span>支持 SQL、JSON、CSV、Markdown、TXT、Excel</span>
+                    <span>表结构、字段说明、建表 SQL 或数据字典都可以放在这里。</span>
+                    <div class="format-pills" aria-label="支持格式">
+                      <span>SQL</span>
+                      <span>JSON</span>
+                      <span>CSV</span>
+                      <span>Markdown</span>
+                      <span>TXT</span>
+                      <span>Excel</span>
+                    </div>
                   </div>
                   <label class="primary-button upload-button" for="schemaFileInput">
                     <svg><use href="#icon-upload"></use></svg>
@@ -304,7 +321,10 @@
 
                 <section class="panel manager-panel">
                   <div class="manager-toolbar">
-                    <span id="schemaFileCount">0 个文件</span>
+                    <div>
+                      <strong id="schemaFileCount">0 个文件</strong>
+                      <span>结构资料清单</span>
+                    </div>
                     <span class="muted-text" id="schemaUploadState">等待上传</span>
                   </div>
                   <div class="file-table-wrap">
@@ -330,8 +350,9 @@
                     <h2>文件预览</h2>
                     <p id="schemaPreviewTitle">未选择文件</p>
                   </div>
+                  <span class="preview-badge">只读</span>
                 </div>
-                <pre class="preview-block" id="schemaPreviewBlock">选择左侧文件后查看内容。</pre>
+                <pre class="preview-block empty" id="schemaPreviewBlock">选择左侧文件后查看内容。</pre>
               </aside>
             </div>
           </section>
@@ -350,10 +371,21 @@
                   </button>
                 </div>
 
-                <section class="upload-zone">
-                  <div>
+                <section class="upload-zone" id="ragUploadZone">
+                  <div class="upload-art">
+                    <svg><use href="#icon-brain"></use></svg>
+                  </div>
+                  <div class="upload-copy">
                     <strong>上传知识库文件</strong>
-                    <span>支持 Markdown、TXT、PDF、SQL、JSON、CSV、Excel</span>
+                    <span>业务口径、FAQ、指标解释和分析规则会成为后续 RAG 检索资料。</span>
+                    <div class="format-pills" aria-label="支持格式">
+                      <span>Markdown</span>
+                      <span>TXT</span>
+                      <span>PDF</span>
+                      <span>SQL</span>
+                      <span>JSON</span>
+                      <span>Excel</span>
+                    </div>
                   </div>
                   <label class="primary-button upload-button" for="ragFileInput">
                     <svg><use href="#icon-upload"></use></svg>
@@ -364,7 +396,10 @@
 
                 <section class="panel manager-panel">
                   <div class="manager-toolbar">
-                    <span id="ragFileCount">0 个文件</span>
+                    <div>
+                      <strong id="ragFileCount">0 个文件</strong>
+                      <span>知识资料清单</span>
+                    </div>
                     <span class="muted-text" id="ragUploadState">等待上传</span>
                   </div>
                   <div class="file-table-wrap">
@@ -390,8 +425,9 @@
                     <h2>文件预览</h2>
                     <p id="ragPreviewTitle">未选择文件</p>
                   </div>
+                  <span class="preview-badge">只读</span>
                 </div>
-                <pre class="preview-block" id="ragPreviewBlock">选择左侧文件后查看内容。</pre>
+                <pre class="preview-block empty" id="ragPreviewBlock">选择左侧文件后查看内容。</pre>
               </aside>
             </div>
           </section>

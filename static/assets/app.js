@@ -59,22 +59,28 @@ const fileManagers = {
   schema: {
     endpoint: "/api/files/schema",
     input: "#schemaFileInput",
+    uploadZone: "#schemaUploadZone",
     table: "#schemaFileTable",
     count: "#schemaFileCount",
     state: "#schemaUploadState",
     previewTitle: "#schemaPreviewTitle",
     previewBlock: "#schemaPreviewBlock",
     defaultPreview: "选择左侧文件后查看内容。",
+    emptyTitle: "还没有结构资料",
+    emptyDescription: "上传数据字典、建表 SQL 或字段说明后，这里会展示可管理的结构文件。",
   },
   rag: {
     endpoint: "/api/files/rag",
     input: "#ragFileInput",
+    uploadZone: "#ragUploadZone",
     table: "#ragFileTable",
     count: "#ragFileCount",
     state: "#ragUploadState",
     previewTitle: "#ragPreviewTitle",
     previewBlock: "#ragPreviewBlock",
     defaultPreview: "选择左侧文件后查看内容。",
+    emptyTitle: "还没有知识库资料",
+    emptyDescription: "上传业务口径、FAQ 或分析规则后，这里会展示可用于检索增强的资料。",
   },
 };
 
@@ -132,8 +138,12 @@ function setHealth(label, kind = "") {
 function setFileState(category, label, kind = "") {
   const config = fileManagers[category];
   const node = document.querySelector(config.state);
+  const zone = document.querySelector(config.uploadZone);
   node.textContent = label;
   node.className = `muted-text ${kind}`;
+  zone.classList.toggle("is-busy", label.includes("中"));
+  zone.classList.toggle("has-error", kind === "error");
+  zone.classList.toggle("is-ok", kind === "ok");
 }
 
 async function fetchJson(url, options) {
@@ -598,7 +608,19 @@ function renderManagedFiles(category) {
   document.querySelector(config.count).textContent = `${files.length} 个文件`;
   const table = document.querySelector(config.table);
   if (!files.length) {
-    table.innerHTML = `<tr><td colspan="5"><div class="inline-empty">暂无文件</div></td></tr>`;
+    table.innerHTML = `
+      <tr class="empty-row">
+        <td colspan="5">
+          <div class="manager-empty">
+            <div class="manager-empty-icon">
+              <svg><use href="#icon-file-text"></use></svg>
+            </div>
+            <strong>${escapeHtml(config.emptyTitle)}</strong>
+            <p>${escapeHtml(config.emptyDescription)}</p>
+          </div>
+        </td>
+      </tr>
+    `;
     return;
   }
 
@@ -607,7 +629,7 @@ function renderManagedFiles(category) {
       (file) => `
         <tr>
           <td><div class="file-name-cell" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div></td>
-          <td>${escapeHtml(file.extension || "-")}</td>
+          <td><span class="file-type-badge">${escapeHtml((file.extension || "-").toUpperCase())}</span></td>
           <td>${escapeHtml(formatBytes(file.size_bytes))}</td>
           <td>${escapeHtml(formatDate(file.uploaded_at))}</td>
           <td>
@@ -645,6 +667,7 @@ async function uploadManagedFile(category, file) {
     setFileState(category, error.message, "error");
   } finally {
     document.querySelector(config.input).value = "";
+    document.querySelector(config.uploadZone).classList.remove("is-dragging");
   }
 }
 
@@ -654,13 +677,16 @@ async function previewManagedFile(category, fileId) {
   const block = document.querySelector(config.previewBlock);
   title.textContent = "读取中";
   block.textContent = "读取中";
+  block.classList.remove("empty", "error");
   try {
     const data = await fetchJson(`${config.endpoint}/${fileId}/preview`);
     title.textContent = data.name;
     block.textContent = data.previewable ? data.preview : "该文件类型暂不支持文本预览。";
+    block.classList.toggle("empty", !data.previewable);
   } catch (error) {
     title.textContent = "预览失败";
     block.textContent = error.message;
+    block.classList.add("error");
   }
 }
 
@@ -684,7 +710,38 @@ async function deleteManagedFile(category, fileId) {
 function resetPreview(category) {
   const config = fileManagers[category];
   document.querySelector(config.previewTitle).textContent = "未选择文件";
-  document.querySelector(config.previewBlock).textContent = config.defaultPreview;
+  const block = document.querySelector(config.previewBlock);
+  block.textContent = config.defaultPreview;
+  block.classList.add("empty");
+  block.classList.remove("error");
+}
+
+function bindUploadZone(category) {
+  const config = fileManagers[category];
+  const zone = document.querySelector(config.uploadZone);
+  const input = document.querySelector(config.input);
+
+  zone.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    zone.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragleave", (event) => {
+    if (!zone.contains(event.relatedTarget)) {
+      zone.classList.remove("is-dragging");
+    }
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.classList.remove("is-dragging");
+    uploadManagedFile(category, event.dataTransfer?.files?.[0]);
+  });
+  input.addEventListener("change", (event) => {
+    uploadManagedFile(category, event.target.files[0]);
+  });
 }
 
 async function copySql() {
@@ -1021,13 +1078,6 @@ function bindEvents() {
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
 
-  document.querySelector(fileManagers.schema.input).addEventListener("change", (event) => {
-    uploadManagedFile("schema", event.target.files[0]);
-  });
-  document.querySelector(fileManagers.rag.input).addEventListener("change", (event) => {
-    uploadManagedFile("rag", event.target.files[0]);
-  });
-
   el.exampleList.addEventListener("click", (event) => {
     const button = event.target.closest(".example-button");
     if (!button) {
@@ -1042,6 +1092,7 @@ function bindEvents() {
 
   for (const category of Object.keys(fileManagers)) {
     const config = fileManagers[category];
+    bindUploadZone(category);
     document.querySelector(config.table).addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
       if (!button) {
