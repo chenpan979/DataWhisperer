@@ -17,3 +17,4 @@ def test_app_routes_exist() -> None:
     assert "/api/files/schema/{file_id}/preview" in paths
     assert "/api/files/rag" in paths
     assert "/api/files/rag/{file_id}/preview" in paths
+    assert "/api/evaluations/run" in paths

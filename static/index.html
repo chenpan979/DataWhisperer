@@ -65,6 +65,9 @@
         <path d="M8 10h4"></path>
         <path d="M12 14h5"></path>
       </symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24">
+        <path d="M22 12h-4l-3 8L9 4l-3 8H2"></path>
+      </symbol>
       <symbol id="icon-upload" viewBox="0 0 24 24">
         <path d="M12 3v12"></path>
         <path d="m7 8 5-5 5 5"></path>
@@ -116,6 +119,10 @@
           <button class="nav-item" type="button" data-view="ragView">
             <svg><use href="#icon-brain"></use></svg>
             <span>RAG 知识库</span>
+          </button>
+          <button class="nav-item" type="button" data-view="evaluationView">
+            <svg><use href="#icon-activity"></use></svg>
+            <span>评测中心</span>
           </button>
         </aside>
 
@@ -429,6 +436,78 @@
                 </div>
                 <pre class="preview-block empty" id="ragPreviewBlock">选择左侧文件后查看内容。</pre>
               </aside>
+            </div>
+          </section>
+
+          <section class="view-panel" id="evaluationView" aria-label="评测中心">
+            <div class="evaluation-workspace">
+              <div class="section-head">
+                <div>
+                  <h2>评测中心</h2>
+                  <p>持续衡量 Text-to-SQL、SQL 安全和指标检索质量，防止模型与 prompt 迭代后退化。</p>
+                </div>
+                <div class="evaluation-actions">
+                  <span class="muted-text" id="evaluationRunMeta">尚未运行</span>
+                  <button class="primary-button compact-button" id="runEvaluationButton" type="button">
+                    <svg><use href="#icon-activity"></use></svg>
+                    <span>运行评测</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="evaluation-kpis" id="evaluationKpis"></div>
+
+              <div class="evaluation-grid">
+                <section class="panel evaluation-suite-panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>评测套件</h2>
+                      <p>覆盖生成、检索和安全边界</p>
+                    </div>
+                    <span class="state-label" id="evaluationState">等待运行</span>
+                  </div>
+                  <div class="evaluation-suites" id="evaluationSuites"></div>
+                </section>
+
+                <section class="panel evaluation-version-panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>版本对比</h2>
+                      <p>用于讲清楚每次升级带来的质量变化</p>
+                    </div>
+                  </div>
+                  <div class="evaluation-version-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>版本</th>
+                          <th>综合</th>
+                          <th>SQL</th>
+                          <th>安全</th>
+                          <th>检索</th>
+                          <th>耗时</th>
+                        </tr>
+                      </thead>
+                      <tbody id="evaluationVersionBody"></tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+
+              <section class="panel evaluation-results-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>用例明细</h2>
+                    <p>点开用例可以查看期望、实际结果、错误原因和生成 SQL。</p>
+                  </div>
+                  <div class="segmented-control" id="evaluationFilters">
+                    <button class="active" type="button" data-filter="all">全部</button>
+                    <button type="button" data-filter="failed">失败</button>
+                    <button type="button" data-filter="passed">通过</button>
+                  </div>
+                </div>
+                <div class="evaluation-case-list" id="evaluationCaseList"></div>
+              </section>
             </div>
           </section>
         </section>

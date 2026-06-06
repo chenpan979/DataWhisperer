@@ -6,6 +6,9 @@ const state = {
   processTimer: null,
   processOpen: false,
   currentSql: "-- SQL will appear here",
+  evaluationReport: null,
+  evaluationFilter: "all",
+  evaluationLoaded: false,
   files: {
     schema: [],
     rag: [],
@@ -123,6 +126,14 @@ const el = {
   viewPanels: document.querySelectorAll(".view-panel"),
   refreshSchemaFilesButton: document.querySelector("#refreshSchemaFilesButton"),
   refreshRagFilesButton: document.querySelector("#refreshRagFilesButton"),
+  runEvaluationButton: document.querySelector("#runEvaluationButton"),
+  evaluationRunMeta: document.querySelector("#evaluationRunMeta"),
+  evaluationState: document.querySelector("#evaluationState"),
+  evaluationKpis: document.querySelector("#evaluationKpis"),
+  evaluationSuites: document.querySelector("#evaluationSuites"),
+  evaluationVersionBody: document.querySelector("#evaluationVersionBody"),
+  evaluationFilters: document.querySelector("#evaluationFilters"),
+  evaluationCaseList: document.querySelector("#evaluationCaseList"),
 };
 
 function setRunState(label, kind = "idle") {
@@ -587,6 +598,191 @@ function switchView(viewId) {
   if (viewId === "ragView") {
     loadManagedFiles("rag");
   }
+  if (viewId === "evaluationView" && !state.evaluationLoaded) {
+    runEvaluations();
+  }
+}
+
+async function runEvaluations() {
+  setEvaluationState("运行中", "idle");
+  el.runEvaluationButton.disabled = true;
+  el.runEvaluationButton.querySelector("span").textContent = "运行中";
+  el.evaluationRunMeta.textContent = "正在执行内置评测套件";
+  renderEvaluationLoading();
+  try {
+    const report = await fetchJson("/api/evaluations/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    state.evaluationReport = report;
+    state.evaluationLoaded = true;
+    renderEvaluationReport(report);
+    const failed = report.cases.filter((item) => item.status === "failed").length;
+    setEvaluationState(failed ? "存在失败" : "全部通过", failed ? "warning" : "ok");
+    el.evaluationRunMeta.textContent = `${formatDate(report.generated_at)} · ${report.duration_ms}ms`;
+  } catch (error) {
+    setEvaluationState("运行失败", "error");
+    el.evaluationRunMeta.textContent = error.message;
+    renderEvaluationError(error.message);
+  } finally {
+    el.runEvaluationButton.disabled = false;
+    el.runEvaluationButton.querySelector("span").textContent = "运行评测";
+  }
+}
+
+function setEvaluationState(label, kind = "idle") {
+  el.evaluationState.textContent = label;
+  el.evaluationState.className = `state-label ${kind}`;
+}
+
+function renderEvaluationLoading() {
+  el.evaluationKpis.innerHTML = Array.from({ length: 5 })
+    .map(
+      () => `
+        <div class="evaluation-kpi skeleton">
+          <span></span>
+          <strong></strong>
+          <p></p>
+        </div>
+      `,
+    )
+    .join("");
+  el.evaluationSuites.innerHTML = '<div class="inline-empty">正在运行评测套件</div>';
+  el.evaluationVersionBody.innerHTML = "";
+  el.evaluationCaseList.innerHTML = '<div class="inline-empty">等待评测结果</div>';
+}
+
+function renderEvaluationError(message) {
+  el.evaluationKpis.innerHTML = "";
+  el.evaluationSuites.innerHTML = "";
+  el.evaluationVersionBody.innerHTML = "";
+  el.evaluationCaseList.innerHTML = `<div class="manager-empty"><strong>评测运行失败</strong><p>${escapeHtml(message)}</p></div>`;
+}
+
+function renderEvaluationReport(report) {
+  renderEvaluationKpis(report.kpis || []);
+  renderEvaluationSuites(report.suites || []);
+  renderEvaluationVersionSnapshots(report.version_snapshots || []);
+  renderEvaluationCases();
+}
+
+function renderEvaluationKpis(kpis) {
+  el.evaluationKpis.innerHTML = kpis
+    .map(
+      (kpi) => `
+        <div class="evaluation-kpi ${escapeHtml(kpi.status || "idle")}">
+          <span>${escapeHtml(kpi.label)}</span>
+          <strong>${escapeHtml(kpi.value)}</strong>
+          <p>${escapeHtml(kpi.description)}</p>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function renderEvaluationSuites(suites) {
+  if (!suites.length) {
+    el.evaluationSuites.innerHTML = '<div class="inline-empty">暂无评测套件</div>';
+    return;
+  }
+  el.evaluationSuites.innerHTML = suites
+    .map(
+      (suite) => `
+        <article class="evaluation-suite ${escapeHtml(suite.status)}">
+          <div>
+            <strong>${escapeHtml(suite.name)}</strong>
+            <p>${escapeHtml(suite.description)}</p>
+          </div>
+          <div class="suite-score">
+            <span>${formatPercent(suite.pass_rate)}</span>
+            <small>${suite.passed}/${suite.total} 通过 · ${suite.duration_ms}ms</small>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderEvaluationVersionSnapshots(snapshots) {
+  if (!snapshots.length) {
+    el.evaluationVersionBody.innerHTML = `<tr><td colspan="6"><div class="inline-empty">暂无版本快照</div></td></tr>`;
+    return;
+  }
+  el.evaluationVersionBody.innerHTML = snapshots
+    .map(
+      (item) => `
+        <tr>
+          <td><strong>${escapeHtml(item.version)}</strong></td>
+          <td>${formatPercent(item.overall_pass_rate)}</td>
+          <td>${formatPercent(item.sql_executable_rate)}</td>
+          <td>${formatPercent(item.safety_pass_rate)}</td>
+          <td>${formatPercent(item.retrieval_pass_rate)}</td>
+          <td>${escapeHtml(item.avg_latency_ms)}ms</td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function renderEvaluationCases() {
+  const report = state.evaluationReport;
+  if (!report) {
+    el.evaluationCaseList.innerHTML = '<div class="inline-empty">运行评测后查看明细</div>';
+    return;
+  }
+  const cases = report.cases.filter((item) => {
+    if (state.evaluationFilter === "all") {
+      return true;
+    }
+    return item.status === state.evaluationFilter;
+  });
+  if (!cases.length) {
+    el.evaluationCaseList.innerHTML = '<div class="inline-empty">当前筛选条件下没有用例</div>';
+    return;
+  }
+  el.evaluationCaseList.innerHTML = cases
+    .map(
+      (item) => `
+        <details class="evaluation-case ${escapeHtml(item.status)}">
+          <summary>
+            <span class="case-status">${escapeHtml(labelForEvalStatus(item.status))}</span>
+            <span class="case-main">
+              <strong>${escapeHtml(item.title)}</strong>
+              <small>${escapeHtml(item.suite_name)} · ${escapeHtml((item.tags || []).join(" / ") || "baseline")}</small>
+            </span>
+          </summary>
+          <div class="case-detail-grid">
+            <div>
+              <span>期望</span>
+              <p>${escapeHtml(item.expected || "-")}</p>
+            </div>
+            <div>
+              <span>实际</span>
+              <p>${escapeHtml(item.actual || "-")}</p>
+            </div>
+            <div>
+              <span>错误原因</span>
+              <p>${escapeHtml((item.errors || []).join("；") || "无")}</p>
+            </div>
+            ${
+              item.generated_sql
+                ? `<pre>${escapeHtml(item.generated_sql)}</pre>`
+                : ""
+            }
+          </div>
+        </details>
+      `,
+    )
+    .join("");
+}
+
+function labelForEvalStatus(status) {
+  return status === "passed" ? "通过" : "失败";
+}
+
+function formatPercent(value) {
+  return `${Math.round(Number(value || 0) * 1000) / 10}%`;
 }
 
 async function loadManagedFiles(category) {
@@ -1077,6 +1273,18 @@ function bindEvents() {
   });
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
+  el.runEvaluationButton.addEventListener("click", runEvaluations);
+  el.evaluationFilters.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-filter]");
+    if (!button) {
+      return;
+    }
+    state.evaluationFilter = button.dataset.filter;
+    el.evaluationFilters
+      .querySelectorAll("button")
+      .forEach((item) => item.classList.toggle("active", item === button));
+    renderEvaluationCases();
+  });
 
   el.exampleList.addEventListener("click", (event) => {
     const button = event.target.closest(".example-button");
