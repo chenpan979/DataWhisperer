@@ -181,15 +181,17 @@
                       <h2>分析结论</h2>
                       <p id="activeQuestion">等待问题输入</p>
                     </div>
-                    <span class="state-label" id="runState">空闲</span>
+                    <div class="panel-actions">
+                      <button class="followup-toggle" id="followupToggle" type="button" aria-expanded="false" hidden>
+                        <span>追问建议</span>
+                        <svg><use href="#icon-chevron"></use></svg>
+                      </button>
+                      <span class="state-label" id="runState">空闲</span>
+                    </div>
                   </div>
                   <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
                   <div class="warning-list" id="warningList"></div>
                   <div class="followup-panel" id="followupPanel" hidden>
-                    <button class="followup-toggle" id="followupToggle" type="button" aria-expanded="false">
-                      <span>查看追问建议</span>
-                      <svg><use href="#icon-chevron"></use></svg>
-                    </button>
                     <div class="followup-list" id="followupList"></div>
                   </div>
                 </section>

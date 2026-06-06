@@ -274,6 +274,7 @@ function resetAnalysisResult(question) {
   el.insightText.classList.add("streaming");
   el.warningList.innerHTML = "";
   el.followupPanel.hidden = true;
+  el.followupToggle.hidden = true;
   setFollowupsOpen(false);
   el.followupList.innerHTML = "";
   el.sqlBlock.textContent = "-- SQL will appear here";
@@ -746,12 +747,14 @@ function generateFollowupQuestions(data) {
 function renderFollowups(suggestions) {
   if (!suggestions.length) {
     el.followupPanel.hidden = true;
+    el.followupToggle.hidden = true;
     setFollowupsOpen(false);
     return;
   }
   el.followupPanel.hidden = false;
+  el.followupToggle.hidden = false;
   setFollowupsOpen(false);
-  el.followupToggle.querySelector("span").textContent = `查看 ${suggestions.length} 个追问建议`;
+  el.followupToggle.querySelector("span").textContent = `${suggestions.length} 个追问`;
   el.followupList.innerHTML = suggestions
     .map(
       (question) => `
