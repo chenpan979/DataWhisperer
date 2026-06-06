@@ -186,10 +186,10 @@
                   <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
                   <div class="warning-list" id="warningList"></div>
                   <div class="followup-panel" id="followupPanel" hidden>
-                    <div class="followup-heading">
-                      <svg><use href="#icon-sparkle"></use></svg>
-                      <span>继续追问</span>
-                    </div>
+                    <button class="followup-toggle" id="followupToggle" type="button" aria-expanded="false">
+                      <span>查看追问建议</span>
+                      <svg><use href="#icon-chevron"></use></svg>
+                    </button>
                     <div class="followup-list" id="followupList"></div>
                   </div>
                 </section>

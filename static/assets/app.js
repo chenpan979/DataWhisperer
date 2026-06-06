@@ -95,6 +95,7 @@ const el = {
   insightText: document.querySelector("#insightText"),
   warningList: document.querySelector("#warningList"),
   followupPanel: document.querySelector("#followupPanel"),
+  followupToggle: document.querySelector("#followupToggle"),
   followupList: document.querySelector("#followupList"),
   processPanel: document.querySelector("#processPanel"),
   processSummary: document.querySelector("#processSummary"),
@@ -273,6 +274,7 @@ function resetAnalysisResult(question) {
   el.insightText.classList.add("streaming");
   el.warningList.innerHTML = "";
   el.followupPanel.hidden = true;
+  setFollowupsOpen(false);
   el.followupList.innerHTML = "";
   el.sqlBlock.textContent = "-- SQL will appear here";
   setProcessOpen(false);
@@ -744,9 +746,12 @@ function generateFollowupQuestions(data) {
 function renderFollowups(suggestions) {
   if (!suggestions.length) {
     el.followupPanel.hidden = true;
+    setFollowupsOpen(false);
     return;
   }
   el.followupPanel.hidden = false;
+  setFollowupsOpen(false);
+  el.followupToggle.querySelector("span").textContent = `查看 ${suggestions.length} 个追问建议`;
   el.followupList.innerHTML = suggestions
     .map(
       (question) => `
@@ -756,6 +761,16 @@ function renderFollowups(suggestions) {
       `,
     )
     .join("");
+}
+
+function setFollowupsOpen(open) {
+  el.followupPanel.classList.toggle("open", open);
+  el.followupToggle?.setAttribute("aria-expanded", String(open));
+}
+
+function toggleFollowups() {
+  const open = el.followupPanel.classList.contains("open");
+  setFollowupsOpen(!open);
 }
 
 function formatCell(value) {
@@ -836,6 +851,7 @@ function bindEvents() {
   el.loadSchemaButton.addEventListener("click", loadSchema);
   el.copySqlButton.addEventListener("click", copySql);
   el.toggleProcessButton.addEventListener("click", toggleProcessPanel);
+  el.followupToggle.addEventListener("click", toggleFollowups);
   el.processTimeline.addEventListener("click", (event) => {
     const button = event.target.closest(".timeline-head");
     if (button) {

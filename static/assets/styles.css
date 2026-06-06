@@ -479,11 +479,15 @@ input:focus {
 }
 
 .insight-text {
+  background: #fbfcfc;
+  border: 1px solid #edf2f0;
+  border-radius: 8px;
   color: #2d3935;
   font-size: 15px;
   line-height: 1.7;
   margin: 0;
   overflow-wrap: anywhere;
+  padding: 12px 14px;
   white-space: normal;
 }
 
@@ -858,23 +862,45 @@ td {
 
 .followup-panel {
   border-top: 1px solid var(--line);
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 12px;
+  padding-top: 12px;
 }
 
-.followup-heading {
+.followup-toggle {
   align-items: center;
-  color: var(--accent-strong);
+  background: #fbfcfc;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
   display: flex;
-  font-weight: 750;
   gap: 8px;
-  margin-bottom: 10px;
+  padding: 7px 11px;
+}
+
+.followup-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.followup-toggle svg {
+  height: 16px;
+  transition: transform 180ms var(--ease);
+  width: 16px;
+}
+
+.followup-panel.open .followup-toggle svg {
+  transform: rotate(180deg);
 }
 
 .followup-list {
-  display: flex;
+  display: none;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 10px;
+}
+
+.followup-panel.open .followup-list {
+  display: flex;
 }
 
 .followup-chip {
