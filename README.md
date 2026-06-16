@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.8.5：AI 查数结果导出与 SQL 审阅增强版本**。
+当前项目已经更新到 **V3.8.6：测试集管理接入评测中心版本**。
 
 版本入口：
 
@@ -30,6 +30,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.8.3`：SQL 代码块增加中文标准注释，解释查询维度、数据来源、关联条件、分组、排序和 LIMIT 等关键语句。
 - `v3.8.4`：主图表恢复 Canvas 展示，保留外部导出按钮，并避免图表内部工具栏和缩放条干扰阅读。
 - `v3.8.5`：修复图表 tooltip 被全屏撑大的问题，悬停提示恢复为轻量小浮层。
+- `v3.8.6`：打通测试集管理和评测中心，上传的测试集可以在评测中心选择并运行 Text-to-SQL 回归评测。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -72,6 +73,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.8 SQL 页面从单纯代码展示升级为 SQL 审阅区，包含自然语言问题、生成说明、只读校验、语法结构校验、执行验证和书写规范提示。
 - V3.8.3 在 SQL 代码内部生成中文注释，方便 SQL 人员审阅，也方便面试时解释模型生成 SQL 的逻辑。
 - V3.8.4-V3.8.5 进一步优化图表展示，主图表保持 Canvas 视觉效果，同时修复 tooltip 样式冲突。
+- V3.8.6 将测试集管理接入评测中心，用户上传 JSON、JSONL、CSV、TXT 或 YAML 测试集后，可以直接选择该文件运行自定义 Text-to-SQL 评测。
 
 ## 技术栈
 
@@ -360,6 +362,30 @@ DELETE /api/evaluations/datasets/{file_id}
 
 支持格式：`.json`、`.jsonl`、`.csv`、`.yaml`、`.yml`、`.txt`。推荐每条用例包含 `question`、`expected_sql_contains` 或 `expected_metrics` 等字段。
 
+V3.8.6 起，评测中心可以选择测试集管理中上传的文件运行自定义 Text-to-SQL 回归评测。`POST /api/evaluations/run` 支持传入：
+
+```json
+{
+  "dataset_file_id": "上传文件 id"
+}
+```
+
+推荐测试集字段：
+
+```json
+{
+  "id": "case_region_orders",
+  "question": "查询各地区订单数量",
+  "expected_sql_contains": ["orders", "regions", "COUNT"],
+  "forbidden_sql_contains": ["DELETE", "DROP"],
+  "expected_columns": ["region_name", "order_count"],
+  "expected_chart_type": "bar",
+  "tags": ["custom", "region"]
+}
+```
+
+也支持 JSON 数组、JSONL、CSV 和 TXT。TXT 会按“一行一个问题”运行基础生成评测。
+
 ## 示例问题
 
 也可以通过 `GET /api/examples` 获取。
@@ -443,7 +469,7 @@ pass_rate: 1.0
 
 可以用下面这段作为 1 分钟项目介绍：
 
-> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.4 使用 DashScope text-embedding-v4 和 Milvus 做语义检索，V3.5 将前端升级为三工作区控制台，V3.6 增强分析体验，V3.7 增加模型评测中心和模型策略对比，V3.8 增强结果导出和 SQL 审阅能力，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标、具备向量检索基础设施和产品化交互体验”的大模型工程项目。
+> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.4 使用 DashScope text-embedding-v4 和 Milvus 做语义检索，V3.5 将前端升级为三工作区控制台，V3.6 增强分析体验，V3.7 增加模型评测中心和模型策略对比，V3.8 增强结果导出、SQL 审阅和自定义测试集评测能力，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标、具备向量检索基础设施和产品化交互体验”的大模型工程项目。
 
 更多讲解内容见：[docs/interview-guide.md](docs/interview-guide.md)。
 
@@ -512,7 +538,7 @@ uvicorn app.main:app --reload --port 8081
 - V3.5：产品控制台升级，新增数据结构资料和 RAG 知识库资料管理页面。
 - V3.6：分析体验增强，加入时间线、逐字输出、图表交互、统一动效和追问建议。
 - V3.7：评测中心，支持 Text-to-SQL、SQL 安全和指标检索的可视化评测工作台。
-- V3.8：结果导出和 SQL 审阅增强，支持图表/表格复制下载、SQL 校验说明和代码内中文注释。
+- V3.8：结果导出和 SQL 审阅增强，支持图表/表格复制下载、SQL 校验说明、代码内中文注释和自定义测试集评测。
 - V3.9：RAG 上传文件自动切片并同步 Milvus，数据结构上传文件接入 schema 解析。
 - V4：MCP 工具化，把数据库查询、图表生成、导出能力包装成工具。
 - V5：多智能体拆分，引入 Schema Analyst、SQL Engineer、Chart Designer、Report Writer。

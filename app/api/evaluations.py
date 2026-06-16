@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+import csv
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import StringIO
 from time import perf_counter
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.evals.metric_retrieval import load_metric_retrieval_cases, run_metric_retrieval_evals
-from app.evals.text_to_sql import load_eval_cases, run_text_to_sql_evals
+from app.evals.text_to_sql import (
+    TextToSqlEvalCase,
+    TextToSqlEvalReport,
+    evaluate_case as evaluate_text_to_sql_case,
+    load_eval_cases,
+    run_text_to_sql_evals,
+)
 from app.models.files import FilePreview, ManagedFile, ManagedFileList
 from app.models.evaluations import (
     EvaluationCaseResult,
@@ -133,16 +143,26 @@ SQL_SAFETY_CASES = (
 
 @router.post("/run", response_model=EvaluationRunResponse)
 def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
-    """运行内置评测套件并返回前端展示所需的质量报告。"""
+    """运行评测套件并返回前端展示所需的质量报告。
+
+    默认使用项目内置评测集。当前端传入 dataset_file_id 时，Text-to-SQL
+    套件会切换为用户上传的自定义测试集，便于做真实回归评测。
+    """
 
     started = perf_counter()
     selected = set(request.suites)
     run_all = not selected
     suites: list[EvaluationSuiteSummary] = []
     cases: list[EvaluationCaseResult] = []
+    dataset_name = "内置评测集"
+    custom_text_cases: list[TextToSqlEvalCase] | None = None
+
+    if request.dataset_file_id:
+        dataset_file, custom_text_cases = _load_uploaded_text_to_sql_cases(request.dataset_file_id)
+        dataset_name = dataset_file.name
 
     if run_all or "text_to_sql" in selected:
-        summary, results = _run_text_to_sql_suite()
+        summary, results = _run_text_to_sql_suite(custom_text_cases, dataset_name)
         suites.append(summary)
         cases.extend(results)
 
@@ -162,6 +182,8 @@ def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
         run_id=f"eval-{uuid4().hex[:8]}",
         generated_at=datetime.now(UTC).isoformat(),
         duration_ms=duration_ms,
+        dataset_file_id=request.dataset_file_id or "",
+        dataset_name=dataset_name,
         kpis=_build_kpis(suites, duration_ms),
         suites=suites,
         cases=cases,
@@ -173,14 +195,33 @@ def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
     )
 
 
-def _run_text_to_sql_suite() -> tuple[EvaluationSuiteSummary, list[EvaluationCaseResult]]:
+def _run_text_to_sql_suite(
+    custom_cases: list[TextToSqlEvalCase] | None = None,
+    dataset_name: str = "内置评测集",
+) -> tuple[EvaluationSuiteSummary, list[EvaluationCaseResult]]:
     started = perf_counter()
-    report = run_text_to_sql_evals()
-    case_by_id = {case.id: case for case in load_eval_cases()}
+    if custom_cases is None:
+        report = run_text_to_sql_evals()
+        cases = load_eval_cases()
+        suite_name = "Text-to-SQL 生成评测"
+        suite_description = "验证典型业务问题是否生成符合规则的 SQL 和图表类型。"
+    else:
+        results_tuple = tuple(evaluate_text_to_sql_case(case) for case in custom_cases)
+        passed = sum(1 for result in results_tuple if result.passed)
+        report = TextToSqlEvalReport(
+            total=len(results_tuple),
+            passed=passed,
+            failed=len(results_tuple) - passed,
+            results=results_tuple,
+        )
+        cases = custom_cases
+        suite_name = f"上传测试集：{dataset_name}"
+        suite_description = "使用测试集管理页面上传的自定义用例运行 Text-to-SQL 回归评测。"
+    case_by_id = {case.id: case for case in cases}
     suite = _suite_summary(
         suite_id="text_to_sql",
-        name="Text-to-SQL 生成评测",
-        description="验证典型业务问题是否生成符合规则的 SQL 和图表类型。",
+        name=suite_name,
+        description=suite_description,
         total=report.total,
         passed=report.passed,
         failed=report.failed,
@@ -289,6 +330,119 @@ def _run_sql_safety_suite() -> tuple[EvaluationSuiteSummary, list[EvaluationCase
     return suite, results
 
 
+def _load_uploaded_text_to_sql_cases(file_id: str) -> tuple[ManagedFile, list[TextToSqlEvalCase]]:
+    store = get_evaluation_dataset_store()
+    payload = store.read_text_file(file_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="测试集文件不存在或不可读取。")
+    dataset_file, text = payload
+    try:
+        cases = _parse_text_to_sql_dataset(dataset_file, text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not cases:
+        raise HTTPException(status_code=400, detail="测试集中没有可运行的用例。")
+    return dataset_file, cases
+
+
+def _parse_text_to_sql_dataset(dataset_file: ManagedFile, text: str) -> list[TextToSqlEvalCase]:
+    extension = dataset_file.extension.casefold()
+    if extension == ".json":
+        raw = json.loads(text)
+        items = _extract_case_items(raw)
+    elif extension == ".jsonl":
+        items = [json.loads(line) for line in text.splitlines() if line.strip()]
+    elif extension == ".csv":
+        items = list(csv.DictReader(StringIO(text)))
+    elif extension in {".yaml", ".yml"}:
+        items = _load_yaml_items(text)
+    elif extension == ".txt":
+        items = [{"question": line.strip()} for line in text.splitlines() if line.strip()]
+    else:
+        raise ValueError(f"暂不支持解析 {extension} 测试集。")
+
+    return [_case_from_uploaded_item(item, index) for index, item in enumerate(items, start=1)]
+
+
+def _extract_case_items(raw: Any) -> list[dict[str, Any]]:
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    if isinstance(raw, dict):
+        for key in ("cases", "items", "data"):
+            value = raw.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return [raw]
+    raise ValueError("JSON 测试集必须是对象、对象数组，或包含 cases/items/data 数组。")
+
+
+def _load_yaml_items(text: str) -> list[dict[str, Any]]:
+    try:
+        import yaml  # type: ignore[import-untyped]
+    except ImportError as exc:
+        raise ValueError("当前环境未安装 PyYAML，暂不能解析 YAML 测试集。") from exc
+    raw = yaml.safe_load(text)
+    return _extract_case_items(raw)
+
+
+def _case_from_uploaded_item(item: dict[str, Any], index: int) -> TextToSqlEvalCase:
+    question = _first_text(item, "question", "问题", "prompt", "input")
+    if not question:
+        raise ValueError(f"第 {index} 条用例缺少 question 字段。")
+    return TextToSqlEvalCase(
+        id=_first_text(item, "id", "case_id") or f"uploaded_{index}",
+        question=question,
+        tags=tuple(_list_value(item.get("tags")) or ["uploaded"]),
+        expected_sql_contains=tuple(
+            _list_value(
+                item.get("expected_sql_contains")
+                or item.get("expected_sql_fragments")
+                or item.get("expected_sql_fragment")
+                or item.get("sql_contains")
+            )
+        ),
+        forbidden_sql_contains=tuple(
+            _list_value(item.get("forbidden_sql_contains") or item.get("forbidden_sql_fragments"))
+        ),
+        expected_columns=tuple(_list_value(item.get("expected_columns") or item.get("columns"))),
+        expected_chart_type=_first_text(item, "expected_chart_type", "chart_type"),
+        must_be_safe=_bool_value(item.get("must_be_safe"), default=True),
+    )
+
+
+def _first_text(item: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _list_value(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list | tuple | set):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    if text.startswith("[") and text.endswith("]"):
+        try:
+            parsed = json.loads(text)
+            return _list_value(parsed)
+        except json.JSONDecodeError:
+            pass
+    return [part.strip() for part in text.split("|") if part.strip()]
+
+
+def _bool_value(value: Any, *, default: bool) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"false", "0", "no", "否"}
+
+
 def _suite_summary(
     suite_id: str,
     name: str,
@@ -367,7 +521,7 @@ def _build_version_snapshots(
     retrieval_suite = _find_suite(suites, "metric_retrieval")
     overall = _overall_rate(suites)
     current = EvaluationVersionSnapshot(
-        version="v3.7.2",
+        version="v3.8.6",
         overall_pass_rate=overall,
         sql_executable_rate=text_suite.pass_rate if text_suite else 0.0,
         safety_pass_rate=safety_suite.pass_rate if safety_suite else 0.0,

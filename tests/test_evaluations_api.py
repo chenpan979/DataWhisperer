@@ -21,7 +21,7 @@ def test_run_evaluations_api_returns_quality_report() -> None:
         "metric_retrieval",
     }
     assert payload["cases"]
-    assert payload["version_snapshots"][-1]["version"] == "v3.7.2"
+    assert payload["version_snapshots"][-1]["version"] == "v3.8.6"
     assert len(payload["trend_points"]) >= 4
     assert payload["issue_distribution"]
     assert len(payload["recent_runs"]) == 3
@@ -56,3 +56,35 @@ def test_evaluation_dataset_file_management_api() -> None:
     delete_response = client.delete(f"/api/evaluations/datasets/{file_id}")
     assert delete_response.status_code == 200
     assert delete_response.json() == {"deleted": True}
+
+
+def test_run_evaluations_with_uploaded_dataset() -> None:
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/evaluations/datasets",
+        files={
+            "file": (
+                "custom_text_to_sql_cases.jsonl",
+                (
+                    b'\xef\xbb\xbf{"id":"custom_region_orders","question":"query orders by region",'
+                    b'"expected_sql_contains":["orders"],"tags":["custom"]}\n'
+                ),
+                "application/jsonl",
+            )
+        },
+    )
+    assert response.status_code == 200
+    file_id = response.json()["id"]
+
+    run_response = client.post("/api/evaluations/run", json={"dataset_file_id": file_id})
+    assert run_response.status_code == 200
+    payload = run_response.json()
+    assert payload["dataset_file_id"] == file_id
+    assert payload["dataset_name"] == "custom_text_to_sql_cases.jsonl"
+    text_suite = next(suite for suite in payload["suites"] if suite["id"] == "text_to_sql")
+    assert text_suite["total"] == 1
+    assert "上传测试集" in text_suite["name"]
+    assert any(case["case_id"] == "custom_region_orders" for case in payload["cases"])
+
+    delete_response = client.delete(f"/api/evaluations/datasets/{file_id}")
+    assert delete_response.status_code == 200

@@ -1686,7 +1686,37 @@ td {
 .evaluation-actions {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+  justify-content: flex-end;
+}
+
+.evaluation-dataset-select {
+  align-items: center;
+  background: #f8fbfa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 8px 4px 10px;
+}
+
+.evaluation-dataset-select span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.evaluation-dataset-select select {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  max-width: 220px;
+  min-width: 130px;
+  outline: 0;
 }
 
 .evaluation-kpis {

@@ -6,11 +6,12 @@ from pydantic import BaseModel, Field
 class EvaluationRunRequest(BaseModel):
     """评测运行请求。
 
-    suites 为空时表示运行全部内置评测套件。首版评测中心先内置套件，
-    后续可以扩展成用户在页面上选择评测集、模型版本和 prompt 版本。
+    suites 为空时表示运行全部套件。dataset_file_id 为空时使用内置评测集；
+    传入上传文件 id 时，Text-to-SQL 套件会使用该文件中的自定义用例。
     """
 
     suites: list[str] = Field(default_factory=list, description="Evaluation suite ids to run.")
+    dataset_file_id: str | None = Field(default=None, description="Uploaded evaluation dataset file id.")
 
 
 class EvaluationKpi(BaseModel):
@@ -113,6 +114,8 @@ class EvaluationRunResponse(BaseModel):
     run_id: str
     generated_at: str
     duration_ms: int
+    dataset_file_id: str = ""
+    dataset_name: str = "内置评测集"
     kpis: list[EvaluationKpi]
     suites: list[EvaluationSuiteSummary]
     cases: list[EvaluationCaseResult]

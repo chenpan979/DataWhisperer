@@ -129,10 +129,12 @@ def evaluate_case(case: TextToSqlEvalCase, max_rows: int = 100) -> TextToSqlEval
         if forbidden.lower() in lowered_sql:
             errors.append(f"SQL contains forbidden fragment: {forbidden}")
 
-    rows = [_sample_row_for_columns(case.expected_columns)]
-    chart = recommend_chart(case.expected_columns, rows, question=case.question)
-    chart_type = str(chart.get("type", ""))
-    if chart_type != case.expected_chart_type:
+    chart_type = ""
+    if case.expected_columns or case.expected_chart_type:
+        rows = [_sample_row_for_columns(case.expected_columns)]
+        chart = recommend_chart(case.expected_columns, rows, question=case.question)
+        chart_type = str(chart.get("type", ""))
+    if case.expected_chart_type and chart_type != case.expected_chart_type:
         errors.append(
             f"Chart type mismatch: expected {case.expected_chart_type}, got {chart_type}"
         )

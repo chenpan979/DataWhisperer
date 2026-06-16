@@ -135,6 +135,16 @@ class ManagedFileStore:
             previewable=True,
         )
 
+    def read_text_file(self, file_id: str) -> tuple[ManagedFile, str] | None:
+        """读取文本文件完整内容，用于后续解析评测集或知识库资料。"""
+
+        metadata = self._read_metadata(file_id)
+        if not metadata or not metadata.get("previewable"):
+            return None
+        file_path = self._resolve_file(metadata["stored_name"])
+        file = ManagedFile(**{key: metadata[key] for key in ManagedFile.model_fields})
+        return file, file_path.read_text("utf-8-sig", errors="replace")
+
     def _load_metadata(self, meta_path: Path) -> ManagedFile | None:
         try:
             metadata = json.loads(meta_path.read_text("utf-8"))

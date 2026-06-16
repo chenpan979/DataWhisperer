@@ -153,6 +153,7 @@ const el = {
   refreshRagFilesButton: document.querySelector("#refreshRagFilesButton"),
   runEvaluationButton: document.querySelector("#runEvaluationButton"),
   evaluationRunMeta: document.querySelector("#evaluationRunMeta"),
+  evaluationDatasetSelect: document.querySelector("#evaluationDatasetSelect"),
   evaluationState: document.querySelector("#evaluationState"),
   evaluationKpis: document.querySelector("#evaluationKpis"),
   evaluationTabs: document.querySelector("#evaluationTabs"),
@@ -659,23 +660,27 @@ function switchView(viewId) {
 }
 
 async function runEvaluations() {
+  const datasetFileId = el.evaluationDatasetSelect?.value || "";
+  const datasetName = selectedEvaluationDatasetName();
   setEvaluationState("运行中", "idle");
   el.runEvaluationButton.disabled = true;
   el.runEvaluationButton.querySelector("span").textContent = "运行中";
-  el.evaluationRunMeta.textContent = "正在执行内置评测套件";
+  el.evaluationRunMeta.textContent = datasetFileId
+    ? `正在执行上传测试集：${datasetName}`
+    : "正在执行内置评测套件";
   renderEvaluationLoading();
   try {
     const report = await fetchJson("/api/evaluations/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ dataset_file_id: datasetFileId || null }),
     });
     state.evaluationReport = report;
     state.evaluationLoaded = true;
     renderEvaluationReport(report);
     const failed = report.cases.filter((item) => item.status === "failed").length;
     setEvaluationState(failed ? "存在失败" : "全部通过", failed ? "warning" : "ok");
-    el.evaluationRunMeta.textContent = `${formatDate(report.generated_at)} · ${report.duration_ms}ms`;
+    el.evaluationRunMeta.textContent = `${report.dataset_name || datasetName} · ${formatDate(report.generated_at)} · ${report.duration_ms}ms`;
   } catch (error) {
     setEvaluationState("运行失败", "error");
     el.evaluationRunMeta.textContent = error.message;
@@ -1122,10 +1127,38 @@ async function loadManagedFiles(category) {
     const data = await fetchJson(config.endpoint);
     state.files[category] = data.files || [];
     renderManagedFiles(category);
+    if (category === "evaluation") {
+      renderEvaluationDatasetOptions();
+    }
     setFileState(category, "已同步", "ok");
   } catch (error) {
     setFileState(category, error.message, "error");
   }
+}
+
+function renderEvaluationDatasetOptions() {
+  if (!el.evaluationDatasetSelect) {
+    return;
+  }
+  const selected = el.evaluationDatasetSelect.value;
+  const files = state.files.evaluation || [];
+  el.evaluationDatasetSelect.innerHTML = [
+    '<option value="">内置评测集</option>',
+    ...files.map(
+      (file) => `<option value="${escapeHtml(file.id)}">${escapeHtml(file.name)}</option>`,
+    ),
+  ].join("");
+  if (files.some((file) => file.id === selected)) {
+    el.evaluationDatasetSelect.value = selected;
+  }
+}
+
+function selectedEvaluationDatasetName() {
+  const selectedId = el.evaluationDatasetSelect?.value || "";
+  if (!selectedId) {
+    return "内置评测集";
+  }
+  return state.files.evaluation.find((file) => file.id === selectedId)?.name || "上传测试集";
 }
 
 function renderManagedFiles(category) {
@@ -2015,6 +2048,10 @@ function bindEvents() {
   });
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
+  el.evaluationDatasetSelect?.addEventListener("change", () => {
+    state.evaluationLoaded = false;
+    el.evaluationRunMeta.textContent = `${selectedEvaluationDatasetName()} · 等待运行`;
+  });
   el.runEvaluationButton.addEventListener("click", runEvaluations);
   bindEvaluationTabs();
   el.evaluationFilters.addEventListener("click", (event) => {
@@ -2081,3 +2118,4 @@ loadExamples();
 renderProcessTimeline([]);
 loadManagedFiles("schema");
 loadManagedFiles("rag");
+loadManagedFiles("evaluation");
