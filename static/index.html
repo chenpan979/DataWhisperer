@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.8.5" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js"></script>
+    <script defer src="/static/assets/app.js?v=3.8.5"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -119,6 +119,10 @@
           <button class="nav-item" type="button" data-view="ragView">
             <svg><use href="#icon-brain"></use></svg>
             <span>RAG 知识库</span>
+          </button>
+          <button class="nav-item" type="button" data-view="datasetView">
+            <svg><use href="#icon-file-text"></use></svg>
+            <span>测试集管理</span>
           </button>
           <button class="nav-item" type="button" data-view="evaluationView">
             <svg><use href="#icon-activity"></use></svg>
@@ -246,6 +250,26 @@
                   </div>
 
                   <div class="tab-panel active" id="chartPanel">
+                    <div class="result-toolbar">
+                      <div>
+                        <strong>图表导出</strong>
+                        <span>用于报告、PPT 和二次编辑</span>
+                      </div>
+                      <div class="result-actions">
+                        <button class="secondary-button compact-button" id="copyChartPngButton" type="button">
+                          <svg><use href="#icon-copy"></use></svg>
+                          <span>复制 PNG</span>
+                        </button>
+                        <button class="secondary-button compact-button" id="downloadChartSvgButton" type="button">
+                          <svg><use href="#icon-download"></use></svg>
+                          <span>下载 SVG</span>
+                        </button>
+                        <button class="secondary-button compact-button" id="copyChartOptionButton" type="button">
+                          <svg><use href="#icon-copy"></use></svg>
+                          <span>复制配置</span>
+                        </button>
+                      </div>
+                    </div>
                     <div class="chart-host empty-chart" id="chartHost">
                       <div class="empty-state">暂无图表</div>
                     </div>
@@ -253,6 +277,26 @@
                   </div>
 
                   <div class="tab-panel" id="tablePanel">
+                    <div class="result-toolbar">
+                      <div>
+                        <strong>表格导出</strong>
+                        <span>复制到 Word、Typora 或下载 CSV</span>
+                      </div>
+                      <div class="result-actions">
+                        <button class="secondary-button compact-button" id="copyTableHtmlButton" type="button">
+                          <svg><use href="#icon-table"></use></svg>
+                          <span>复制 Word 表格</span>
+                        </button>
+                        <button class="secondary-button compact-button" id="copyTableMarkdownButton" type="button">
+                          <svg><use href="#icon-copy"></use></svg>
+                          <span>复制 Markdown</span>
+                        </button>
+                        <button class="secondary-button compact-button" id="downloadCsvButton" type="button">
+                          <svg><use href="#icon-download"></use></svg>
+                          <span>下载 CSV</span>
+                        </button>
+                      </div>
+                    </div>
                     <div class="table-wrap">
                       <table id="resultTable">
                         <thead></thead>
@@ -264,7 +308,7 @@
                   <div class="tab-panel" id="sqlPanel">
                     <div class="code-toolbar">
                       <div>
-                        <span>执行 SQL</span>
+                        <span>自然语言生成 SQL</span>
                         <small id="sqlMeta">0 行</small>
                       </div>
                       <div class="code-actions">
@@ -279,14 +323,28 @@
                         </button>
                       </div>
                     </div>
+                    <div class="sql-review">
+                      <section class="sql-review-card">
+                        <span>原始问题</span>
+                        <strong id="sqlQuestionText">等待用户提问</strong>
+                      </section>
+                      <section class="sql-review-card">
+                        <span>生成说明</span>
+                        <p id="sqlExplanationText">运行分析后，这里会说明 SQL 的查询意图、聚合口径和排序逻辑。</p>
+                      </section>
+                      <section class="sql-review-card">
+                        <span>校验结果</span>
+                        <div class="sql-check-list" id="sqlCheckList"></div>
+                      </section>
+                    </div>
                     <div class="sql-viewer" id="sqlViewer">
                       <pre class="sql-line-numbers" id="sqlLineNumbers" aria-hidden="true">1</pre>
                       <pre class="sql-block"><code id="sqlBlock">-- SQL will appear here</code></pre>
                     </div>
                   </div>
                 </section>
-              </section>
-            </div>
+                  </section>
+                </div>
           </section>
 
           <section class="view-panel" id="schemaView" aria-label="数据结构">
@@ -439,6 +497,86 @@
             </div>
           </section>
 
+          <section class="view-panel" id="datasetView" aria-label="测试集管理">
+            <div class="manager-layout dataset-manager-layout">
+              <section class="manager-main">
+                <div class="section-head">
+                  <div>
+                    <h2>测试集管理</h2>
+                    <p>上传自定义离线评测集，用于后续扩展真实模型回归评测。</p>
+                  </div>
+                  <span class="muted-text" id="evaluationDatasetFileCount">0 个文件</span>
+                </div>
+
+                <section class="upload-zone dataset-upload-zone" id="evaluationDatasetUploadZone">
+                  <div class="upload-art">
+                    <svg><use href="#icon-upload"></use></svg>
+                  </div>
+                  <div class="upload-copy">
+                    <strong>上传测试集文件</strong>
+                    <span>支持 JSON、JSONL、CSV、YAML、TXT，单文件不超过 10MB。</span>
+                    <div class="format-pills">
+                      <span>question</span>
+                      <span>expected_sql</span>
+                      <span>expected_metric</span>
+                    </div>
+                  </div>
+                  <label class="primary-button upload-button" for="evaluationDatasetFileInput">
+                    <svg><use href="#icon-upload"></use></svg>
+                    <span>选择文件</span>
+                  </label>
+                  <input
+                    class="file-input"
+                    id="evaluationDatasetFileInput"
+                    type="file"
+                    accept=".json,.jsonl,.csv,.yaml,.yml,.txt"
+                  />
+                </section>
+
+                <div class="dataset-spec-card">
+                  <strong>推荐格式</strong>
+                  <p>每条用例至少包含问题、期望 SQL 片段或期望指标。当前版本先做文件管理，后续接入真实评测 runner。</p>
+                  <code>{"question": "...", "expected_sql_contains": ["..."]}</code>
+                </div>
+
+                <section class="panel manager-panel">
+                  <div class="manager-toolbar">
+                    <div>
+                      <strong>已上传测试集</strong>
+                      <span>自定义评测资料清单</span>
+                    </div>
+                    <span class="muted-text" id="evaluationDatasetUploadState">等待上传</span>
+                  </div>
+                  <div class="file-table-wrap">
+                    <table class="file-table">
+                      <thead>
+                        <tr>
+                          <th>文件名</th>
+                          <th>类型</th>
+                          <th>大小</th>
+                          <th>上传时间</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody id="evaluationDatasetFileTable"></tbody>
+                    </table>
+                  </div>
+                </section>
+              </section>
+
+              <aside class="preview-pane dataset-preview-pane">
+                <div class="panel-heading">
+                  <div>
+                    <h2>文件预览</h2>
+                    <p id="evaluationDatasetPreviewTitle">未选择文件</p>
+                  </div>
+                  <span class="preview-badge">只读</span>
+                </div>
+                <pre class="dataset-preview-block empty" id="evaluationDatasetPreviewBlock">选择左侧测试集后查看内容。</pre>
+              </aside>
+            </div>
+          </section>
+
           <section class="view-panel" id="evaluationView" aria-label="评测中心">
             <div class="evaluation-workspace">
               <div class="section-head">
@@ -457,56 +595,143 @@
 
               <div class="evaluation-kpis" id="evaluationKpis"></div>
 
-              <div class="evaluation-grid">
-                <section class="panel evaluation-suite-panel">
-                  <div class="panel-heading">
-                    <div>
-                      <h2>评测套件</h2>
-                      <p>覆盖生成、检索和安全边界</p>
-                    </div>
-                    <span class="state-label" id="evaluationState">等待运行</span>
-                  </div>
-                  <div class="evaluation-suites" id="evaluationSuites"></div>
-                </section>
+              <section class="panel evaluation-console">
+                <div class="evaluation-tabs" id="evaluationTabs" role="tablist" aria-label="评测视图">
+                  <button class="active" type="button" data-eval-tab="overview">评测概览</button>
+                  <button type="button" data-eval-tab="suites">套件质量</button>
+                  <button type="button" data-eval-tab="cases">用例明细</button>
+                  <button type="button" data-eval-tab="compare">模型对比</button>
+                  <button type="button" data-eval-tab="errors">错误案例</button>
+                </div>
 
-                <section class="panel evaluation-version-panel">
-                  <div class="panel-heading">
-                    <div>
-                      <h2>版本对比</h2>
-                      <p>用于讲清楚每次升级带来的质量变化</p>
-                    </div>
-                  </div>
-                  <div class="evaluation-version-table">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>版本</th>
-                          <th>综合</th>
-                          <th>SQL</th>
-                          <th>安全</th>
-                          <th>检索</th>
-                          <th>耗时</th>
-                        </tr>
-                      </thead>
-                      <tbody id="evaluationVersionBody"></tbody>
-                    </table>
-                  </div>
-                </section>
-              </div>
+                <div class="evaluation-tab-panel active" id="evaluationOverviewPanel">
+                  <div class="evaluation-overview-grid">
+                    <section class="evaluation-card wide">
+                      <div class="panel-heading">
+                        <div>
+                          <h2>质量趋势</h2>
+                          <p>观察版本迭代后综合、SQL 和检索质量变化</p>
+                        </div>
+                      </div>
+                      <div class="evaluation-chart" id="evaluationTrendChart"></div>
+                    </section>
 
-              <section class="panel evaluation-results-panel">
-                <div class="panel-heading">
-                  <div>
-                    <h2>用例明细</h2>
-                    <p>点开用例可以查看期望、实际结果、错误原因和生成 SQL。</p>
-                  </div>
-                  <div class="segmented-control" id="evaluationFilters">
-                    <button class="active" type="button" data-filter="all">全部</button>
-                    <button type="button" data-filter="failed">失败</button>
-                    <button type="button" data-filter="passed">通过</button>
+                    <section class="evaluation-card">
+                      <div class="panel-heading">
+                        <div>
+                          <h2>问题分布</h2>
+                          <p>本次失败用例的类型归因</p>
+                        </div>
+                      </div>
+                      <div class="issue-list" id="evaluationIssueList"></div>
+                    </section>
+
+                    <section class="evaluation-card">
+                      <div class="panel-heading">
+                        <div>
+                          <h2>最近评测任务</h2>
+                          <p>本次运行拆分后的套件任务</p>
+                        </div>
+                      </div>
+                      <div class="recent-run-list" id="evaluationRecentRuns"></div>
+                    </section>
                   </div>
                 </div>
-                <div class="evaluation-case-list" id="evaluationCaseList"></div>
+
+                <div class="evaluation-tab-panel" id="evaluationSuitesPanel">
+                  <div class="evaluation-grid">
+                    <section class="evaluation-card evaluation-suite-panel">
+                      <div class="panel-heading">
+                        <div>
+                          <h2>评测套件</h2>
+                          <p>覆盖生成、检索和安全边界</p>
+                        </div>
+                        <span class="state-label" id="evaluationState">等待运行</span>
+                      </div>
+                      <div class="evaluation-suites" id="evaluationSuites"></div>
+                    </section>
+
+                    <section class="evaluation-card evaluation-version-panel">
+                      <div class="panel-heading">
+                        <div>
+                          <h2>版本对比</h2>
+                          <p>用于讲清楚每次升级带来的质量变化</p>
+                        </div>
+                      </div>
+                      <div class="evaluation-version-table">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>版本</th>
+                              <th>综合</th>
+                              <th>SQL</th>
+                              <th>安全</th>
+                              <th>检索</th>
+                              <th>耗时</th>
+                            </tr>
+                          </thead>
+                          <tbody id="evaluationVersionBody"></tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+
+                <div class="evaluation-tab-panel" id="evaluationCasesPanel">
+                  <section class="evaluation-card evaluation-results-panel">
+                    <div class="panel-heading">
+                      <div>
+                        <h2>用例明细</h2>
+                        <p>点开用例可以查看期望、实际结果、错误原因和生成 SQL。</p>
+                      </div>
+                      <div class="segmented-control" id="evaluationFilters">
+                        <button class="active" type="button" data-filter="all">全部</button>
+                        <button type="button" data-filter="failed">失败</button>
+                        <button type="button" data-filter="passed">通过</button>
+                      </div>
+                    </div>
+                    <div class="evaluation-case-list" id="evaluationCaseList"></div>
+                  </section>
+                </div>
+
+                <div class="evaluation-tab-panel" id="evaluationComparePanel">
+                  <section class="evaluation-card">
+                    <div class="panel-heading">
+                      <div>
+                        <h2>模型与策略对比</h2>
+                        <p>用于说明当前链路相对基线和消融方案的收益</p>
+                      </div>
+                    </div>
+                    <div class="evaluation-model-table">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>方案</th>
+                            <th>场景</th>
+                            <th>综合</th>
+                            <th>SQL</th>
+                            <th>检索</th>
+                            <th>耗时</th>
+                            <th>说明</th>
+                          </tr>
+                        </thead>
+                        <tbody id="evaluationModelBody"></tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+
+                <div class="evaluation-tab-panel" id="evaluationErrorsPanel">
+                  <section class="evaluation-card">
+                    <div class="panel-heading">
+                      <div>
+                        <h2>错误案例</h2>
+                        <p>优先暴露失败样本，用来指导下一轮 prompt、RAG 或安全策略优化。</p>
+                      </div>
+                    </div>
+                    <div class="evaluation-case-list" id="evaluationErrorList"></div>
+                  </section>
+                </div>
               </section>
             </div>
           </section>

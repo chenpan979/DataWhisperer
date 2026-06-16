@@ -13,7 +13,7 @@ from app.models.files import FilePreview, ManagedFile
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STORAGE_ROOT = PROJECT_ROOT / "storage"
 
-TEXT_PREVIEW_EXTENSIONS = {".csv", ".json", ".md", ".sql", ".txt", ".yaml", ".yml"}
+TEXT_PREVIEW_EXTENSIONS = {".csv", ".json", ".jsonl", ".md", ".sql", ".txt", ".yaml", ".yml"}
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,12 @@ RAG_FILE_STORE = FileStoreConfig(
     category="rag",
     directory=STORAGE_ROOT / "rag_knowledge",
     allowed_extensions=frozenset({".csv", ".json", ".md", ".pdf", ".sql", ".txt", ".xlsx", ".xls"}),
+)
+
+EVALUATION_DATASET_STORE = FileStoreConfig(
+    category="evaluation_dataset",
+    directory=STORAGE_ROOT / "evaluation_datasets",
+    allowed_extensions=frozenset({".csv", ".json", ".jsonl", ".txt", ".yaml", ".yml"}),
 )
 
 
@@ -136,6 +142,7 @@ class ManagedFileStore:
             if not file_path.exists():
                 return None
             metadata["size_bytes"] = file_path.stat().st_size
+            metadata["previewable"] = _is_previewable(metadata)
             return ManagedFile(**{key: metadata[key] for key in ManagedFile.model_fields})
         except (OSError, json.JSONDecodeError, KeyError, ValueError):
             return None
@@ -147,7 +154,9 @@ class ManagedFileStore:
         if not meta_path.exists():
             return None
         try:
-            return json.loads(meta_path.read_text("utf-8"))
+            metadata = json.loads(meta_path.read_text("utf-8"))
+            metadata["previewable"] = _is_previewable(metadata)
+            return metadata
         except (OSError, json.JSONDecodeError):
             return None
 
@@ -173,9 +182,18 @@ def _is_safe_file_id(file_id: str) -> bool:
     return bool(re.fullmatch(r"[a-f0-9]{32}", file_id))
 
 
+def _is_previewable(metadata: dict) -> bool:
+    extension = str(metadata.get("extension") or Path(str(metadata.get("stored_name", ""))).suffix)
+    return extension.casefold() in TEXT_PREVIEW_EXTENSIONS
+
+
 def get_schema_file_store() -> ManagedFileStore:
     return ManagedFileStore(SCHEMA_FILE_STORE)
 
 
 def get_rag_file_store() -> ManagedFileStore:
     return ManagedFileStore(RAG_FILE_STORE)
+
+
+def get_evaluation_dataset_store() -> ManagedFileStore:
+    return ManagedFileStore(EVALUATION_DATASET_STORE)

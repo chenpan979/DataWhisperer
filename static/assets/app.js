@@ -6,12 +6,15 @@ const state = {
   processTimer: null,
   processOpen: false,
   currentSql: "-- SQL will appear here",
+  evaluationTrendChart: null,
   evaluationReport: null,
   evaluationFilter: "all",
   evaluationLoaded: false,
+  evaluationTab: "overview",
   files: {
     schema: [],
     rag: [],
+    evaluation: [],
   },
 };
 
@@ -85,6 +88,19 @@ const fileManagers = {
     emptyTitle: "还没有知识库资料",
     emptyDescription: "上传业务口径、FAQ 或分析规则后，这里会展示可用于检索增强的资料。",
   },
+  evaluation: {
+    endpoint: "/api/evaluations/datasets",
+    input: "#evaluationDatasetFileInput",
+    uploadZone: "#evaluationDatasetUploadZone",
+    table: "#evaluationDatasetFileTable",
+    count: "#evaluationDatasetFileCount",
+    state: "#evaluationDatasetUploadState",
+    previewTitle: "#evaluationDatasetPreviewTitle",
+    previewBlock: "#evaluationDatasetPreviewBlock",
+    defaultPreview: "选择左侧测试集后查看内容。",
+    emptyTitle: "还没有上传测试集",
+    emptyDescription: "上传 JSON、JSONL、CSV 或 YAML 测试集后，这里会展示可管理的评测资料。",
+  },
 };
 
 const el = {
@@ -114,9 +130,18 @@ const el = {
   chartHost: document.querySelector("#chartHost"),
   chartInteraction: document.querySelector("#chartInteraction"),
   resultTable: document.querySelector("#resultTable"),
+  copyChartPngButton: document.querySelector("#copyChartPngButton"),
+  downloadChartSvgButton: document.querySelector("#downloadChartSvgButton"),
+  copyChartOptionButton: document.querySelector("#copyChartOptionButton"),
+  copyTableHtmlButton: document.querySelector("#copyTableHtmlButton"),
+  copyTableMarkdownButton: document.querySelector("#copyTableMarkdownButton"),
+  downloadCsvButton: document.querySelector("#downloadCsvButton"),
   sqlBlock: document.querySelector("#sqlBlock"),
   sqlLineNumbers: document.querySelector("#sqlLineNumbers"),
   sqlMeta: document.querySelector("#sqlMeta"),
+  sqlQuestionText: document.querySelector("#sqlQuestionText"),
+  sqlExplanationText: document.querySelector("#sqlExplanationText"),
+  sqlCheckList: document.querySelector("#sqlCheckList"),
   formatSqlButton: document.querySelector("#formatSqlButton"),
   downloadSqlButton: document.querySelector("#downloadSqlButton"),
   copySqlButton: document.querySelector("#copySqlButton"),
@@ -130,10 +155,17 @@ const el = {
   evaluationRunMeta: document.querySelector("#evaluationRunMeta"),
   evaluationState: document.querySelector("#evaluationState"),
   evaluationKpis: document.querySelector("#evaluationKpis"),
+  evaluationTabs: document.querySelector("#evaluationTabs"),
+  evaluationTabPanels: document.querySelectorAll(".evaluation-tab-panel"),
+  evaluationTrendChart: document.querySelector("#evaluationTrendChart"),
+  evaluationIssueList: document.querySelector("#evaluationIssueList"),
+  evaluationRecentRuns: document.querySelector("#evaluationRecentRuns"),
   evaluationSuites: document.querySelector("#evaluationSuites"),
   evaluationVersionBody: document.querySelector("#evaluationVersionBody"),
   evaluationFilters: document.querySelector("#evaluationFilters"),
   evaluationCaseList: document.querySelector("#evaluationCaseList"),
+  evaluationModelBody: document.querySelector("#evaluationModelBody"),
+  evaluationErrorList: document.querySelector("#evaluationErrorList"),
 };
 
 function setRunState(label, kind = "idle") {
@@ -279,7 +311,8 @@ function renderResponse(data) {
   el.metricChart.textContent = chartTypeLabels[data.chart?.type] || data.chart?.type || "-";
   el.metricTrace.textContent = data.trace_steps.length;
   el.activeQuestion.textContent = data.question;
-  setSqlContent(data.generated_sql || "-- SQL unavailable");
+  setSqlContent(formatGeneratedSql(data.generated_sql || "-- SQL unavailable", data));
+  renderSqlReview(data);
 
   renderWarnings(data.warnings || []);
   renderTable(data.columns, data.rows);
@@ -304,6 +337,14 @@ function resetAnalysisResult(question) {
   setFollowupsOpen(false);
   el.followupList.innerHTML = "";
   setSqlContent("-- SQL will appear here");
+  renderSqlReview({
+    question,
+    generated_sql: "",
+    sql_explanation: "",
+    trace_steps: [],
+    rows: [],
+    warnings: [],
+  });
   setProcessOpen(false);
   renderTable([], []);
   renderChartSkeleton();
@@ -446,6 +487,7 @@ function renderChart(chartOption, rows) {
     state.chart = window.echarts.init(chartNode);
     state.chart.setOption(enhanceChartOption(localizedOption), true);
     state.chart.on("click", handleChartClick);
+    resizeActiveChart();
     el.chartInteraction.textContent = "可悬停查看数据，点击图表元素查看明细。";
     return;
   }
@@ -465,6 +507,19 @@ function renderChartSkeleton() {
     </div>
   `;
   el.chartInteraction.textContent = "正在准备图表区域。";
+}
+
+function resizeActiveChart() {
+  requestAnimationFrame(() => {
+    if (state.chart) {
+      state.chart.resize();
+    }
+    setTimeout(() => {
+      if (state.chart) {
+        state.chart.resize();
+      }
+    }, 80);
+  });
 }
 
 function localizeChartOption(chartOption) {
@@ -498,30 +553,24 @@ function enhanceChartOption(option) {
   const enhanced = JSON.parse(JSON.stringify(option || {}));
   enhanced.animationDuration = 520;
   enhanced.animationEasing = "cubicOut";
+  enhanced.backgroundColor = "#ffffff";
   enhanced.tooltip = {
     trigger: enhanced.xAxis ? "axis" : "item",
     confine: true,
+    appendToBody: true,
+    extraCssText:
+      "max-width: 260px; min-width: 120px; width: auto; white-space: normal; line-height: 1.5; box-shadow: 0 10px 28px rgba(20,31,27,0.14);",
     ...enhanced.tooltip,
   };
-  const toolboxFeature = {
-    restore: {},
-    saveAsImage: {},
-  };
+  enhanced.toolbox = undefined;
+  enhanced.dataZoom = undefined;
   if (enhanced.xAxis) {
-    toolboxFeature.dataZoom = { yAxisIndex: "none" };
-  }
-  enhanced.toolbox = {
-    right: 8,
-    feature: toolboxFeature,
-  };
-  if (enhanced.xAxis && !enhanced.dataZoom) {
-    enhanced.dataZoom = [
-      { type: "inside", throttle: 50 },
-      { type: "slider", height: 18, bottom: 6 },
-    ];
     enhanced.grid = {
+      left: 48,
+      right: 24,
+      top: 48,
+      bottom: 42,
       ...(enhanced.grid || {}),
-      bottom: 54,
       containLabel: true,
     };
   }
@@ -601,6 +650,12 @@ function switchView(viewId) {
   if (viewId === "evaluationView" && !state.evaluationLoaded) {
     runEvaluations();
   }
+  if (viewId === "datasetView") {
+    loadManagedFiles("evaluation");
+  }
+  if (viewId === "evaluationView" && state.evaluationTrendChart) {
+    setTimeout(() => state.evaluationTrendChart.resize(), 0);
+  }
 }
 
 async function runEvaluations() {
@@ -648,23 +703,38 @@ function renderEvaluationLoading() {
       `,
     )
     .join("");
+  el.evaluationTrendChart.innerHTML = '<div class="inline-empty">正在生成质量趋势</div>';
+  el.evaluationIssueList.innerHTML = '<div class="inline-empty">正在统计问题分布</div>';
+  el.evaluationRecentRuns.innerHTML = '<div class="inline-empty">正在读取最近任务</div>';
   el.evaluationSuites.innerHTML = '<div class="inline-empty">正在运行评测套件</div>';
   el.evaluationVersionBody.innerHTML = "";
   el.evaluationCaseList.innerHTML = '<div class="inline-empty">等待评测结果</div>';
+  el.evaluationModelBody.innerHTML = "";
+  el.evaluationErrorList.innerHTML = '<div class="inline-empty">等待错误案例</div>';
 }
 
 function renderEvaluationError(message) {
   el.evaluationKpis.innerHTML = "";
+  el.evaluationTrendChart.innerHTML = "";
+  el.evaluationIssueList.innerHTML = "";
+  el.evaluationRecentRuns.innerHTML = "";
   el.evaluationSuites.innerHTML = "";
   el.evaluationVersionBody.innerHTML = "";
+  el.evaluationModelBody.innerHTML = "";
+  el.evaluationErrorList.innerHTML = "";
   el.evaluationCaseList.innerHTML = `<div class="manager-empty"><strong>评测运行失败</strong><p>${escapeHtml(message)}</p></div>`;
 }
 
 function renderEvaluationReport(report) {
   renderEvaluationKpis(report.kpis || []);
+  renderEvaluationTrend(report.trend_points || []);
+  renderEvaluationIssues(report.issue_distribution || []);
+  renderEvaluationRecentRuns(report.recent_runs || []);
   renderEvaluationSuites(report.suites || []);
   renderEvaluationVersionSnapshots(report.version_snapshots || []);
+  renderEvaluationModelComparisons(report.model_comparisons || []);
   renderEvaluationCases();
+  renderEvaluationErrors();
 }
 
 function renderEvaluationKpis(kpis) {
@@ -672,10 +742,129 @@ function renderEvaluationKpis(kpis) {
     .map(
       (kpi) => `
         <div class="evaluation-kpi ${escapeHtml(kpi.status || "idle")}">
-          <span>${escapeHtml(kpi.label)}</span>
+          <div class="kpi-head">
+            <span>${escapeHtml(kpi.label)}</span>
+            <em>${escapeHtml(deltaForKpi(kpi.id))}</em>
+          </div>
           <strong>${escapeHtml(kpi.value)}</strong>
           <p>${escapeHtml(kpi.description)}</p>
         </div>
+      `,
+    )
+    .join("");
+}
+
+function renderEvaluationTrend(points) {
+  if (state.evaluationTrendChart) {
+    state.evaluationTrendChart.dispose();
+    state.evaluationTrendChart = null;
+  }
+  if (!points.length) {
+    el.evaluationTrendChart.innerHTML = '<div class="inline-empty">暂无趋势数据</div>';
+    return;
+  }
+  if (!window.echarts) {
+    el.evaluationTrendChart.innerHTML = points
+      .map((item) => `<div class="inline-empty">${escapeHtml(item.version)} · ${formatPercent(item.overall_pass_rate)}</div>`)
+      .join("");
+    return;
+  }
+  el.evaluationTrendChart.innerHTML = "";
+  state.evaluationTrendChart = window.echarts.init(el.evaluationTrendChart);
+  state.evaluationTrendChart.setOption(
+    {
+      color: ["#0f766e", "#2563eb", "#b7791f"],
+      grid: { left: 40, right: 18, top: 24, bottom: 34 },
+      tooltip: { trigger: "axis", valueFormatter: (value) => `${value}%` },
+      legend: {
+        bottom: 0,
+        itemHeight: 8,
+        itemWidth: 14,
+        textStyle: { color: "#66736d" },
+      },
+      xAxis: {
+        type: "category",
+        boundaryGap: false,
+        data: points.map((item) => item.version),
+        axisLine: { lineStyle: { color: "#dde5e1" } },
+        axisLabel: { color: "#66736d" },
+      },
+      yAxis: {
+        type: "value",
+        min: 0,
+        max: 100,
+        axisLabel: { formatter: "{value}%", color: "#66736d" },
+        splitLine: { lineStyle: { color: "#edf2f0" } },
+      },
+      series: [
+        {
+          name: "综合",
+          type: "line",
+          smooth: true,
+          areaStyle: { opacity: 0.08 },
+          data: points.map((item) => Math.round(item.overall_pass_rate * 1000) / 10),
+        },
+        {
+          name: "SQL",
+          type: "line",
+          smooth: true,
+          data: points.map((item) => Math.round(item.sql_quality_rate * 1000) / 10),
+        },
+        {
+          name: "检索",
+          type: "line",
+          smooth: true,
+          data: points.map((item) => Math.round(item.retrieval_pass_rate * 1000) / 10),
+        },
+      ],
+    },
+    true,
+  );
+}
+
+function renderEvaluationIssues(items) {
+  if (!items.length) {
+    el.evaluationIssueList.innerHTML = '<div class="inline-empty">暂无问题分布</div>';
+    return;
+  }
+  const total = Math.max(1, items.reduce((sum, item) => sum + Number(item.value || 0), 0));
+  el.evaluationIssueList.innerHTML = items
+    .map((item) => {
+      const value = Number(item.value || 0);
+      const width = value === 0 ? 4 : Math.max(8, Math.round((value / total) * 100));
+      return `
+        <div class="issue-item ${escapeHtml(item.status || "ok")}">
+          <div>
+            <strong>${escapeHtml(item.name)}</strong>
+            <span>${value} 个问题</span>
+          </div>
+          <div class="issue-bar"><span style="width: ${width}%"></span></div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderEvaluationRecentRuns(items) {
+  if (!items.length) {
+    el.evaluationRecentRuns.innerHTML = '<div class="inline-empty">暂无最近任务</div>';
+    return;
+  }
+  el.evaluationRecentRuns.innerHTML = items
+    .map(
+      (item) => `
+        <article class="recent-run ${escapeHtml(item.status || "ok")}">
+          <div class="recent-run-head">
+            <strong>${escapeHtml(item.name)}</strong>
+            <span>${escapeHtml(item.status === "ok" ? "已完成" : "需关注")}</span>
+          </div>
+          <div class="recent-run-meta">
+            <span>${escapeHtml(item.case_count)} 条用例</span>
+            <span>${escapeHtml(item.duration_ms)}ms</span>
+          </div>
+          <div class="progress-track"><span style="width: ${Math.round(Number(item.pass_rate || 0) * 100)}%"></span></div>
+          <small>通过率 ${formatPercent(item.pass_rate)} · ${formatDate(item.finished_at)}</small>
+        </article>
       `,
     )
     .join("");
@@ -719,6 +908,28 @@ function renderEvaluationVersionSnapshots(snapshots) {
           <td>${formatPercent(item.safety_pass_rate)}</td>
           <td>${formatPercent(item.retrieval_pass_rate)}</td>
           <td>${escapeHtml(item.avg_latency_ms)}ms</td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function renderEvaluationModelComparisons(items) {
+  if (!items.length) {
+    el.evaluationModelBody.innerHTML = `<tr><td colspan="7"><div class="inline-empty">暂无模型对比数据</div></td></tr>`;
+    return;
+  }
+  el.evaluationModelBody.innerHTML = items
+    .map(
+      (item) => `
+        <tr>
+          <td><strong>${escapeHtml(item.name)}</strong></td>
+          <td>${escapeHtml(item.scenario)}</td>
+          <td>${formatPercent(item.overall_pass_rate)}</td>
+          <td>${formatPercent(item.sql_quality_rate)}</td>
+          <td>${formatPercent(item.retrieval_pass_rate)}</td>
+          <td>${escapeHtml(item.avg_latency_ms)}ms</td>
+          <td>${escapeHtml(item.note)}</td>
         </tr>
       `,
     )
@@ -777,8 +988,127 @@ function renderEvaluationCases() {
     .join("");
 }
 
+function renderEvaluationErrors() {
+  const report = state.evaluationReport;
+  if (!report) {
+    el.evaluationErrorList.innerHTML = '<div class="inline-empty">运行评测后查看错误案例</div>';
+    return;
+  }
+  const failedCases = report.cases.filter((item) => item.status === "failed");
+  if (!failedCases.length) {
+    el.evaluationErrorList.innerHTML = `
+      <div class="manager-empty evaluation-success-empty">
+        <div class="manager-empty-icon"><svg><use href="#icon-check"></use></svg></div>
+        <strong>本次没有失败案例</strong>
+        <p>当前内置评测全部通过。后续可以扩展更难的测试集来继续压测模型边界。</p>
+      </div>
+    `;
+    return;
+  }
+  el.evaluationErrorList.innerHTML = failedCases
+    .map(
+      (item) => `
+        <details class="evaluation-case failed">
+          <summary>
+            <span class="case-status">失败</span>
+            <span class="case-main">
+              <strong>${escapeHtml(item.title)}</strong>
+              <small>${escapeHtml(item.suite_name)}</small>
+            </span>
+          </summary>
+          <div class="case-detail-grid">
+            <div><span>错误原因</span><p>${escapeHtml((item.errors || []).join("；") || "未知")}</p></div>
+            <div><span>修复建议</span><p>${escapeHtml(suggestionForFailure(item))}</p></div>
+          </div>
+        </details>
+      `,
+    )
+    .join("");
+}
+
+function switchEvaluationTab(tabName) {
+  if (!tabName) {
+    return;
+  }
+  state.evaluationTab = tabName;
+  el.evaluationTabs
+    .querySelectorAll("button")
+    .forEach((button) => {
+      const isActive = button.dataset.evalTab === tabName;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+    });
+  el.evaluationTabPanels.forEach((panel) =>
+    panel.classList.toggle("active", panel.id === `evaluation${capitalize(tabName)}Panel`),
+  );
+  if (tabName === "overview" && state.evaluationTrendChart) {
+    setTimeout(() => state.evaluationTrendChart.resize(), 0);
+  }
+}
+
 function labelForEvalStatus(status) {
   return status === "passed" ? "通过" : "失败";
+}
+
+function deltaForKpi(id) {
+  const labels = {
+    overall: "较基线提升",
+    sql_quality: "稳定",
+    sql_safety: "硬边界",
+    retrieval: "RAG 增强",
+    latency: "离线评测",
+  };
+  return labels[id] || "监控中";
+}
+
+function suggestionForFailure(item) {
+  if (item.suite_id === "text_to_sql") {
+    return "优先检查 prompt 模板、schema 摘要和 SQL 生成规则。";
+  }
+  if (item.suite_id === "metric_retrieval") {
+    return "优先补充指标别名、业务口径文档或调整检索阈值。";
+  }
+  if (item.suite_id === "sql_safety") {
+    return "优先检查服务端 SQL 安全校验正则和多语句拦截逻辑。";
+  }
+  return "建议查看 trace、输入问题和实际输出后定位。";
+}
+
+function capitalize(value) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function bindEvaluationTabs() {
+  el.evaluationTabs.querySelectorAll("button[data-eval-tab]").forEach((button) => {
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(button.classList.contains("active")));
+    button.addEventListener("click", () => switchEvaluationTab(button.dataset.evalTab));
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      switchEvaluationTab(button.dataset.evalTab);
+    });
+  });
+  el.evaluationTabs.addEventListener("click", (event) => {
+    switchEvaluationTab(getEvaluationTabFromEvent(event));
+  });
+}
+
+function getEvaluationTabFromEvent(event) {
+  const directButton = event.target.closest?.("button[data-eval-tab]");
+  if (directButton) {
+    return directButton.dataset.evalTab;
+  }
+
+  const x = event.clientX;
+  const y = event.clientY;
+  const fallbackButton = Array.from(el.evaluationTabs.querySelectorAll("button[data-eval-tab]")).find((button) => {
+    const rect = button.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  });
+  return fallbackButton?.dataset.evalTab || "";
 }
 
 function formatPercent(value) {
@@ -843,7 +1173,6 @@ function renderManagedFiles(category) {
     )
     .join("");
 }
-
 async function uploadManagedFile(category, file) {
   if (!file) {
     return;
@@ -952,19 +1281,99 @@ async function copySql() {
   }, 1200);
 }
 
+function renderSqlReview(data = {}) {
+  const sql = data.generated_sql || state.currentSql || "";
+  if (el.sqlQuestionText) {
+    el.sqlQuestionText.textContent = data.question || "等待用户提问";
+  }
+  if (el.sqlExplanationText) {
+    el.sqlExplanationText.textContent =
+      data.sql_explanation || "运行分析后，这里会说明 SQL 的查询意图、聚合口径和排序逻辑。";
+  }
+  if (!el.sqlCheckList) {
+    return;
+  }
+  el.sqlCheckList.innerHTML = buildSqlChecks(sql, data)
+    .map(
+      (item) => `
+        <span class="sql-check ${escapeHtml(item.status)}">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.detail)}</strong>
+        </span>
+      `,
+    )
+    .join("");
+}
+
+function buildSqlChecks(sql, data = {}) {
+  if (isPlaceholderSql(sql) || !sql.trim()) {
+    return [{ label: "等待生成", detail: "输入问题后自动生成 SQL", status: "pending" }];
+  }
+
+  const normalized = stripSqlComments(sql).trim();
+  const readOnly = isReadOnlySql(normalized);
+  const singleStatement = isSingleSqlStatement(normalized);
+  const balanced = hasBalancedParentheses(normalized);
+  const hasLimit = /\bLIMIT\b/i.test(normalized);
+  const hasSelectStar = /\bSELECT\s+\*/i.test(normalized);
+  const executionOk = Array.isArray(data.trace_steps)
+    && data.trace_steps.some((step) => step.name === "execute_sql" && step.status === "ok");
+
+  return [
+    {
+      label: "只读范围",
+      detail: readOnly ? "仅 SELECT/WITH" : "存在非只读风险",
+      status: readOnly ? "ok" : "error",
+    },
+    {
+      label: "语法结构",
+      detail: singleStatement && balanced ? "单语句且括号匹配" : "需检查分号或括号",
+      status: singleStatement && balanced ? "ok" : "warning",
+    },
+    {
+      label: "执行验证",
+      detail: executionOk ? `数据库执行成功，返回 ${data.rows?.length ?? 0} 行` : "等待数据库执行结果",
+      status: executionOk ? "ok" : "pending",
+    },
+    {
+      label: "结果限制",
+      detail: hasLimit ? "已设置 LIMIT" : "建议增加 LIMIT",
+      status: hasLimit ? "ok" : "warning",
+    },
+    {
+      label: "书写规范",
+      detail: hasSelectStar ? "建议显式列名" : "字段、聚合和排序清晰",
+      status: hasSelectStar ? "warning" : "ok",
+    },
+  ];
+}
+
+function formatGeneratedSql(sql, data = {}) {
+  if (isPlaceholderSql(sql)) {
+    return sql;
+  }
+  return annotateSqlText(formatSqlText(stripLeadingSqlComments(sql)), data);
+}
+
 function setSqlContent(sql) {
   state.currentSql = sql || "-- SQL unavailable";
   const lines = state.currentSql.split(/\r?\n/);
   el.sqlBlock.innerHTML = highlightSql(state.currentSql);
   el.sqlLineNumbers.textContent = lines.map((_, index) => index + 1).join("\n");
-  el.sqlMeta.textContent = `${lines.length} 行 · ${isPlaceholderSql(state.currentSql) ? "等待生成" : "只读查询"}`;
+  const sqlState = isPlaceholderSql(state.currentSql)
+    ? "等待生成"
+    : state.currentSql.includes("-- DataWhisperer 自动生成 SQL")
+      ? "只读查询 · 含注释"
+      : "只读查询";
+  el.sqlMeta.textContent = `${lines.length} 行 · ${sqlState}`;
 }
 
 function formatCurrentSql() {
   if (isPlaceholderSql(state.currentSql)) {
     return;
   }
-  setSqlContent(formatSqlText(state.currentSql));
+  const sourceSql = state.lastResponse?.generated_sql || stripLeadingSqlComments(state.currentSql);
+  setSqlContent(formatGeneratedSql(sourceSql, state.lastResponse || {}));
 }
 
 function downloadSql() {
@@ -982,8 +1391,335 @@ function downloadSql() {
   URL.revokeObjectURL(url);
 }
 
+function getResultDataset() {
+  const response = state.lastResponse || {};
+  return {
+    columns: response.columns || [],
+    rows: response.rows || [],
+  };
+}
+
+function hasResultRows() {
+  const { columns, rows } = getResultDataset();
+  return columns.length > 0 && rows.length > 0;
+}
+
+function buildResultHtmlTable() {
+  const { columns, rows } = getResultDataset();
+  const header = columns.map((column) => `<th>${escapeHtml(labelForColumn(column))}</th>`).join("");
+  const body = rows
+    .map(
+      (row) => `
+        <tr>
+          ${columns.map((column) => `<td>${escapeHtml(formatCell(row[column]))}</td>`).join("")}
+        </tr>
+      `,
+    )
+    .join("");
+  return `
+    <table style="border-collapse:collapse;font-family:Arial,'Microsoft YaHei',sans-serif;font-size:12px;">
+      <thead>
+        <tr>${header}</tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+  `.replaceAll("<th>", '<th style="border:1px solid #d8e2de;background:#eef5f2;padding:8px 10px;text-align:left;">')
+    .replaceAll("<td>", '<td style="border:1px solid #d8e2de;padding:8px 10px;text-align:left;">');
+}
+
+function buildResultMarkdownTable() {
+  const { columns, rows } = getResultDataset();
+  const escapeMarkdown = (value) => String(value ?? "").replaceAll("|", "\\|").replace(/\r?\n/g, " ");
+  const header = `| ${columns.map((column) => escapeMarkdown(labelForColumn(column))).join(" | ")} |`;
+  const divider = `| ${columns.map(() => "---").join(" | ")} |`;
+  const body = rows
+    .map((row) => `| ${columns.map((column) => escapeMarkdown(formatCell(row[column]))).join(" | ")} |`)
+    .join("\n");
+  return [header, divider, body].filter(Boolean).join("\n");
+}
+
+function buildResultCsv() {
+  const { columns, rows } = getResultDataset();
+  const escapeCsv = (value) => {
+    const text = String(value ?? "");
+    return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  const header = columns.map((column) => escapeCsv(labelForColumn(column))).join(",");
+  const body = rows.map((row) => columns.map((column) => escapeCsv(formatCell(row[column]))).join(",")).join("\n");
+  return [header, body].filter(Boolean).join("\n");
+}
+
+async function copyTableHtml() {
+  if (!hasResultRows()) {
+    return;
+  }
+  const html = buildResultHtmlTable();
+  const markdown = buildResultMarkdownTable();
+  if (window.ClipboardItem) {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([markdown], { type: "text/plain" }),
+      }),
+    ]);
+  } else {
+    await navigator.clipboard.writeText(markdown);
+  }
+  markButtonDone(el.copyTableHtmlButton, "已复制");
+}
+
+async function copyTableMarkdown() {
+  if (!hasResultRows()) {
+    return;
+  }
+  await navigator.clipboard.writeText(buildResultMarkdownTable());
+  markButtonDone(el.copyTableMarkdownButton, "已复制");
+}
+
+function downloadResultCsv() {
+  if (!hasResultRows()) {
+    return;
+  }
+  downloadBlob(
+    new Blob([`\ufeff${buildResultCsv()}`], { type: "text/csv;charset=utf-8" }),
+    `datawhisperer-result-${timestampForFilename()}.csv`,
+  );
+  markButtonDone(el.downloadCsvButton, "已下载");
+}
+
+function getChartSvgText() {
+  const svg = buildChartSvgForExport();
+  if (!svg) {
+    return "";
+  }
+  svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  return new XMLSerializer().serializeToString(svg);
+}
+
+function buildChartSvgForExport() {
+  if (!window.echarts || !state.lastResponse?.chart) {
+    return el.chartHost.querySelector("svg");
+  }
+  const canvasRect = el.chartHost.getBoundingClientRect();
+  const exportNode = document.createElement("div");
+  exportNode.style.cssText = [
+    "position: fixed",
+    "left: -10000px",
+    "top: -10000px",
+    `width: ${Math.max(720, Math.round(canvasRect.width || 720))}px`,
+    `height: ${Math.max(420, Math.round(canvasRect.height || 420))}px`,
+    "background: #ffffff",
+  ].join(";");
+  document.body.appendChild(exportNode);
+
+  const exportChart = window.echarts.init(exportNode, null, { renderer: "svg" });
+  exportChart.setOption(enhanceChartOption(localizeChartOption(state.lastResponse.chart)), true);
+  const svg = exportNode.querySelector("svg")?.cloneNode(true);
+  exportChart.dispose();
+  exportNode.remove();
+  return svg;
+}
+
+async function copyChartPng() {
+  if (!state.chart) {
+    return;
+  }
+  const blob = await imageDataUrlToPngBlob(
+    state.chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" }),
+  );
+  if (window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      markButtonDone(el.copyChartPngButton, "已复制");
+      return;
+    } catch (error) {
+      console.warn("Clipboard image copy failed; downloading PNG instead.", error);
+    }
+  }
+  downloadBlob(blob, `datawhisperer-chart-${timestampForFilename()}.png`);
+  markButtonDone(el.copyChartPngButton, "已下载");
+}
+
+function downloadChartSvg() {
+  const svgText = getChartSvgText();
+  if (!svgText) {
+    return;
+  }
+  downloadBlob(
+    new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }),
+    `datawhisperer-chart-${timestampForFilename()}.svg`,
+  );
+  markButtonDone(el.downloadChartSvgButton, "已下载");
+}
+
+async function copyChartOption() {
+  if (!state.chart) {
+    return;
+  }
+  const payload = {
+    question: state.lastResponse?.question || "",
+    chart: state.lastResponse?.chart || {},
+    echarts_option: state.chart.getOption(),
+    columns: state.lastResponse?.columns || [],
+    rows: state.lastResponse?.rows || [],
+  };
+  await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+  markButtonDone(el.copyChartOptionButton, "已复制");
+}
+
+async function imageDataUrlToPngBlob(dataUrl) {
+  const sourceBlob = await (await fetch(dataUrl)).blob();
+  if (sourceBlob.type === "image/png") {
+    return sourceBlob;
+  }
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth || image.width;
+      canvas.height = image.naturalHeight || image.height;
+      const context = canvas.getContext("2d");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Chart export failed"))), "image/png");
+      URL.revokeObjectURL(image.src);
+    };
+    image.onerror = reject;
+    image.src = URL.createObjectURL(sourceBlob);
+  });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function timestampForFilename() {
+  return new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+}
+
+function markButtonDone(button, label) {
+  const textNode = button?.querySelector("span");
+  if (!textNode) {
+    return;
+  }
+  const original = textNode.textContent;
+  textNode.textContent = label;
+  button.classList.add("is-done");
+  setTimeout(() => {
+    textNode.textContent = original;
+    button.classList.remove("is-done");
+  }, 1200);
+}
+
 function isPlaceholderSql(sql) {
   return !sql || sql.trim().startsWith("-- SQL");
+}
+
+function stripLeadingSqlComments(sql) {
+  return sql
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n")
+    .trim();
+}
+
+function stripSqlComments(sql) {
+  return sql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+function isReadOnlySql(sql) {
+  const forbidden = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|REPLACE|GRANT|REVOKE|CALL|EXEC)\b/i;
+  return /^(SELECT|WITH)\b/i.test(sql) && !forbidden.test(sql);
+}
+
+function isSingleSqlStatement(sql) {
+  return sql
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean).length <= 1;
+}
+
+function hasBalancedParentheses(sql) {
+  let depth = 0;
+  for (const character of sql) {
+    if (character === "(") {
+      depth += 1;
+    }
+    if (character === ")") {
+      depth -= 1;
+    }
+    if (depth < 0) {
+      return false;
+    }
+  }
+  return depth === 0;
+}
+
+function annotateSqlText(sql, data = {}) {
+  const lines = sql.split(/\r?\n/).filter((line) => line.trim());
+  const comments = [
+    "-- DataWhisperer 自动生成 SQL",
+    `-- 原始问题：${data.question || "用户自然语言问题"}`,
+  ];
+
+  if (data.sql_explanation) {
+    comments.push(`-- 生成说明：${data.sql_explanation}`);
+  }
+  comments.push("-- 说明：以下 SQL 仅用于只读查询，复制后仍可直接在 MySQL 中执行。", "");
+
+  const annotatedLines = [];
+  let lastComment = "";
+  for (const line of lines) {
+    const clauseComment = commentForSqlLine(line);
+    if (clauseComment && clauseComment !== lastComment) {
+      annotatedLines.push(clauseComment);
+      lastComment = clauseComment;
+    }
+    annotatedLines.push(line);
+  }
+  return [...comments, ...annotatedLines].join("\n");
+}
+
+function commentForSqlLine(line) {
+  const normalized = line.trim().toUpperCase();
+  if (normalized.startsWith("SELECT")) {
+    return "-- 选择查询结果需要展示的维度字段和计算指标。";
+  }
+  if (normalized.startsWith("FROM")) {
+    return "-- 指定主查询表，作为本次分析的数据来源。";
+  }
+  if (
+    normalized.startsWith("JOIN")
+    || normalized.startsWith("LEFT JOIN")
+    || normalized.startsWith("RIGHT JOIN")
+    || normalized.startsWith("INNER JOIN")
+  ) {
+    return "-- 关联维度表或明细表，补充分析所需字段。";
+  }
+  if (normalized.startsWith("ON")) {
+    return "-- 指定表之间的关联条件，避免产生错误笛卡尔积。";
+  }
+  if (normalized.startsWith("WHERE")) {
+    return "-- 设置过滤条件，例如时间范围、地区或业务状态。";
+  }
+  if (normalized.startsWith("GROUP BY")) {
+    return "-- 按业务维度分组，用于聚合统计指标。";
+  }
+  if (normalized.startsWith("ORDER BY")) {
+    return "-- 按核心指标排序，方便快速查看排名或趋势。";
+  }
+  if (normalized.startsWith("LIMIT")) {
+    return "-- 限制返回行数，避免一次性返回过多数据。";
+  }
+  return "";
 }
 
 function formatSqlText(sql) {
@@ -1254,6 +1990,12 @@ function bindEvents() {
   el.formatSqlButton.addEventListener("click", formatCurrentSql);
   el.downloadSqlButton.addEventListener("click", downloadSql);
   el.copySqlButton.addEventListener("click", copySql);
+  el.copyChartPngButton.addEventListener("click", copyChartPng);
+  el.downloadChartSvgButton.addEventListener("click", downloadChartSvg);
+  el.copyChartOptionButton.addEventListener("click", copyChartOption);
+  el.copyTableHtmlButton.addEventListener("click", copyTableHtml);
+  el.copyTableMarkdownButton.addEventListener("click", copyTableMarkdown);
+  el.downloadCsvButton.addEventListener("click", downloadResultCsv);
   el.toggleProcessButton.addEventListener("click", toggleProcessPanel);
   el.followupToggle.addEventListener("click", toggleFollowups);
   el.processTimeline.addEventListener("click", (event) => {
@@ -1274,6 +2016,7 @@ function bindEvents() {
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
   el.runEvaluationButton.addEventListener("click", runEvaluations);
+  bindEvaluationTabs();
   el.evaluationFilters.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-filter]");
     if (!button) {
@@ -1324,6 +2067,9 @@ function bindEvents() {
   window.addEventListener("resize", () => {
     if (state.chart) {
       state.chart.resize();
+    }
+    if (state.evaluationTrendChart) {
+      state.evaluationTrendChart.resize();
     }
   });
 }

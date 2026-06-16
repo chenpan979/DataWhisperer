@@ -65,6 +65,48 @@ class EvaluationVersionSnapshot(BaseModel):
     avg_latency_ms: int
 
 
+class EvaluationTrendPoint(BaseModel):
+    """质量趋势图中的一个版本点。"""
+
+    version: str
+    overall_pass_rate: float
+    sql_quality_rate: float
+    retrieval_pass_rate: float
+
+
+class EvaluationIssueDistribution(BaseModel):
+    """评测问题类型分布。"""
+
+    name: str
+    value: int
+    status: str = "ok"
+
+
+class EvaluationRecentRun(BaseModel):
+    """最近评测任务摘要。"""
+
+    id: str
+    name: str
+    suite: str
+    status: str
+    pass_rate: float
+    case_count: int
+    duration_ms: int
+    finished_at: str
+
+
+class EvaluationModelComparison(BaseModel):
+    """模型/策略对比行。"""
+
+    name: str
+    scenario: str
+    overall_pass_rate: float
+    sql_quality_rate: float
+    retrieval_pass_rate: float
+    avg_latency_ms: int
+    note: str
+
+
 class EvaluationRunResponse(BaseModel):
     """评测中心主响应。"""
 
@@ -75,3 +117,7 @@ class EvaluationRunResponse(BaseModel):
     suites: list[EvaluationSuiteSummary]
     cases: list[EvaluationCaseResult]
     version_snapshots: list[EvaluationVersionSnapshot]
+    trend_points: list[EvaluationTrendPoint]
+    issue_distribution: list[EvaluationIssueDistribution]
+    recent_runs: list[EvaluationRecentRun]
+    model_comparisons: list[EvaluationModelComparison]

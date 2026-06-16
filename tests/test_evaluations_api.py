@@ -21,4 +21,38 @@ def test_run_evaluations_api_returns_quality_report() -> None:
         "metric_retrieval",
     }
     assert payload["cases"]
-    assert payload["version_snapshots"][-1]["version"] == "v3.7.0"
+    assert payload["version_snapshots"][-1]["version"] == "v3.7.2"
+    assert len(payload["trend_points"]) >= 4
+    assert payload["issue_distribution"]
+    assert len(payload["recent_runs"]) == 3
+    assert len(payload["model_comparisons"]) >= 3
+
+
+def test_evaluation_dataset_file_management_api() -> None:
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/evaluations/datasets",
+        files={
+            "file": (
+                "custom_text_to_sql_cases.jsonl",
+                b'{"question":"query monthly sales","expected_sql_contains":["SUM"]}\n',
+                "application/jsonl",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    uploaded = response.json()
+    file_id = uploaded["id"]
+
+    list_response = client.get("/api/evaluations/datasets")
+    assert list_response.status_code == 200
+    assert any(file["id"] == file_id for file in list_response.json()["files"])
+
+    preview_response = client.get(f"/api/evaluations/datasets/{file_id}/preview")
+    assert preview_response.status_code == 200
+    assert "expected_sql_contains" in preview_response.json()["preview"]
+
+    delete_response = client.delete(f"/api/evaluations/datasets/{file_id}")
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"deleted": True}
