@@ -154,6 +154,11 @@ const el = {
   runEvaluationButton: document.querySelector("#runEvaluationButton"),
   evaluationRunMeta: document.querySelector("#evaluationRunMeta"),
   evaluationDatasetSelect: document.querySelector("#evaluationDatasetSelect"),
+  evaluationDatasetPicker: document.querySelector("#evaluationDatasetPicker"),
+  evaluationDatasetTrigger: document.querySelector("#evaluationDatasetTrigger"),
+  evaluationDatasetLabel: document.querySelector("#evaluationDatasetLabel"),
+  evaluationDatasetHint: document.querySelector("#evaluationDatasetHint"),
+  evaluationDatasetMenu: document.querySelector("#evaluationDatasetMenu"),
   evaluationState: document.querySelector("#evaluationState"),
   evaluationKpis: document.querySelector("#evaluationKpis"),
   evaluationTabs: document.querySelector("#evaluationTabs"),
@@ -1142,6 +1147,14 @@ function renderEvaluationDatasetOptions() {
   }
   const selected = el.evaluationDatasetSelect.value;
   const files = state.files.evaluation || [];
+  const options = [
+    { id: "", name: "内置评测集", description: "默认 Text-to-SQL / SQL 安全 / 指标检索套件" },
+    ...files.map((file) => ({
+      id: file.id,
+      name: file.name,
+      description: `${(file.extension || "").toUpperCase()} · ${formatBytes(file.size_bytes)}`,
+    })),
+  ];
   el.evaluationDatasetSelect.innerHTML = [
     '<option value="">内置评测集</option>',
     ...files.map(
@@ -1151,6 +1164,55 @@ function renderEvaluationDatasetOptions() {
   if (files.some((file) => file.id === selected)) {
     el.evaluationDatasetSelect.value = selected;
   }
+  renderEvaluationDatasetMenu(options);
+  updateEvaluationDatasetTrigger();
+}
+
+function renderEvaluationDatasetMenu(options) {
+  if (!el.evaluationDatasetMenu) {
+    return;
+  }
+  const selected = el.evaluationDatasetSelect?.value || "";
+  el.evaluationDatasetMenu.innerHTML = options
+    .map(
+      (option) => `
+        <button
+          class="evaluation-dataset-option ${option.id === selected ? "active" : ""}"
+          type="button"
+          role="option"
+          aria-selected="${option.id === selected ? "true" : "false"}"
+          data-id="${escapeHtml(option.id)}"
+        >
+          <strong>${escapeHtml(option.name)}</strong>
+          <span>${escapeHtml(option.description)}</span>
+        </button>
+      `,
+    )
+    .join("");
+}
+
+function updateEvaluationDatasetTrigger() {
+  const selectedId = el.evaluationDatasetSelect?.value || "";
+  const selectedFile = state.files.evaluation.find((file) => file.id === selectedId);
+  const name = selectedFile?.name || "内置评测集";
+  const hint = selectedFile
+    ? `${(selectedFile.extension || "").toUpperCase()} · ${formatBytes(selectedFile.size_bytes)}`
+    : "默认回归套件";
+  if (el.evaluationDatasetLabel) {
+    el.evaluationDatasetLabel.textContent = name;
+  }
+  if (el.evaluationDatasetHint) {
+    el.evaluationDatasetHint.textContent = hint;
+  }
+  if (el.evaluationDatasetMenu) {
+    el.evaluationDatasetMenu
+      .querySelectorAll(".evaluation-dataset-option")
+      .forEach((option) => {
+        const isActive = option.dataset.id === selectedId;
+        option.classList.toggle("active", isActive);
+        option.setAttribute("aria-selected", String(isActive));
+      });
+  }
 }
 
 function selectedEvaluationDatasetName() {
@@ -1159,6 +1221,26 @@ function selectedEvaluationDatasetName() {
     return "内置评测集";
   }
   return state.files.evaluation.find((file) => file.id === selectedId)?.name || "上传测试集";
+}
+
+function toggleEvaluationDatasetMenu(forceOpen) {
+  if (!el.evaluationDatasetMenu || !el.evaluationDatasetTrigger) {
+    return;
+  }
+  const isOpen = forceOpen ?? el.evaluationDatasetMenu.hidden;
+  el.evaluationDatasetMenu.hidden = !isOpen;
+  el.evaluationDatasetTrigger.setAttribute("aria-expanded", String(isOpen));
+}
+
+function selectEvaluationDataset(fileId) {
+  if (!el.evaluationDatasetSelect) {
+    return;
+  }
+  el.evaluationDatasetSelect.value = fileId || "";
+  updateEvaluationDatasetTrigger();
+  toggleEvaluationDatasetMenu(false);
+  state.evaluationLoaded = false;
+  el.evaluationRunMeta.textContent = `${selectedEvaluationDatasetName()} · 等待运行`;
 }
 
 function renderManagedFiles(category) {
@@ -2049,8 +2131,18 @@ function bindEvents() {
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
   el.evaluationDatasetSelect?.addEventListener("change", () => {
-    state.evaluationLoaded = false;
-    el.evaluationRunMeta.textContent = `${selectedEvaluationDatasetName()} · 等待运行`;
+    selectEvaluationDataset(el.evaluationDatasetSelect.value);
+  });
+  el.evaluationDatasetTrigger?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleEvaluationDatasetMenu();
+  });
+  el.evaluationDatasetMenu?.addEventListener("click", (event) => {
+    const button = event.target.closest(".evaluation-dataset-option");
+    if (!button) {
+      return;
+    }
+    selectEvaluationDataset(button.dataset.id);
   });
   el.runEvaluationButton.addEventListener("click", runEvaluations);
   bindEvaluationTabs();
@@ -2107,6 +2199,11 @@ function bindEvents() {
     }
     if (state.evaluationTrendChart) {
       state.evaluationTrendChart.resize();
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (!el.evaluationDatasetPicker?.contains(event.target)) {
+      toggleEvaluationDatasetMenu(false);
     }
   });
 }

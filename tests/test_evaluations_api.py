@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
@@ -21,7 +23,7 @@ def test_run_evaluations_api_returns_quality_report() -> None:
         "metric_retrieval",
     }
     assert payload["cases"]
-    assert payload["version_snapshots"][-1]["version"] == "v3.8.6"
+    assert payload["version_snapshots"][-1]["version"] == "v3.8.7"
     assert len(payload["trend_points"]) >= 4
     assert payload["issue_distribution"]
     assert len(payload["recent_runs"]) == 3
@@ -85,6 +87,40 @@ def test_run_evaluations_with_uploaded_dataset() -> None:
     assert text_suite["total"] == 1
     assert "上传测试集" in text_suite["name"]
     assert any(case["case_id"] == "custom_region_orders" for case in payload["cases"])
+
+    delete_response = client.delete(f"/api/evaluations/datasets/{file_id}")
+    assert delete_response.status_code == 200
+
+
+def test_run_evaluations_with_sample_100_case_dataset() -> None:
+    """验证项目内置的 100 条上传样例可以完整接入评测中心。
+
+    这个测试覆盖真实产品链路：测试集管理上传文件，评测中心选择该文件，
+    然后运行 Text-to-SQL 自定义回归评测。
+    """
+
+    client = TestClient(create_app())
+    dataset_path = Path("evals/text_to_sql_upload_100_cases.jsonl")
+    response = client.post(
+        "/api/evaluations/datasets",
+        files={
+            "file": (
+                dataset_path.name,
+                dataset_path.read_bytes(),
+                "application/jsonl",
+            )
+        },
+    )
+    assert response.status_code == 200
+    file_id = response.json()["id"]
+
+    run_response = client.post("/api/evaluations/run", json={"dataset_file_id": file_id})
+    assert run_response.status_code == 200
+    payload = run_response.json()
+    text_suite = next(suite for suite in payload["suites"] if suite["id"] == "text_to_sql")
+    assert text_suite["total"] == 100
+    assert text_suite["failed"] == 0
+    assert payload["dataset_name"] == dataset_path.name
 
     delete_response = client.delete(f"/api/evaluations/datasets/{file_id}")
     assert delete_response.status_code == 200

@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.8.6" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.8.7" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.8.6"></script>
+    <script defer src="/static/assets/app.js?v=3.8.7"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -585,12 +585,26 @@
                   <p>持续衡量 Text-to-SQL、SQL 安全和指标检索质量，防止模型与 prompt 迭代后退化。</p>
                 </div>
                 <div class="evaluation-actions">
-                  <label class="evaluation-dataset-select">
+                  <div class="evaluation-dataset-select" id="evaluationDatasetPicker">
                     <span>评测数据源</span>
-                    <select id="evaluationDatasetSelect">
+                    <button
+                      class="evaluation-dataset-trigger"
+                      id="evaluationDatasetTrigger"
+                      type="button"
+                      aria-expanded="false"
+                      aria-haspopup="listbox"
+                    >
+                      <span>
+                        <strong id="evaluationDatasetLabel">内置评测集</strong>
+                        <small id="evaluationDatasetHint">默认回归套件</small>
+                      </span>
+                      <svg><use href="#icon-chevron"></use></svg>
+                    </button>
+                    <div class="evaluation-dataset-menu" id="evaluationDatasetMenu" role="listbox" hidden></div>
+                    <select class="sr-only-select" id="evaluationDatasetSelect" aria-label="评测数据源">
                       <option value="">内置评测集</option>
                     </select>
-                  </label>
+                  </div>
                   <span class="muted-text" id="evaluationRunMeta">尚未运行</span>
                   <button class="primary-button compact-button" id="runEvaluationButton" type="button">
                     <svg><use href="#icon-activity"></use></svg>
