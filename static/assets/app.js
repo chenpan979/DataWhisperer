@@ -339,7 +339,7 @@ function renderResponse(data) {
   setSqlContent(formatGeneratedSql(data.generated_sql || "-- SQL unavailable", data));
   renderSqlReview(data);
 
-  renderWarnings(data.warnings || []);
+  renderWarnings([]);
   renderTable(data.columns, data.rows);
   renderProcessTimeline(normalizeTraceSteps(data.trace_steps || []));
   renderChart(data.chart, data.rows);

@@ -3593,10 +3593,10 @@ td {
 }
 
 #analysisView .detail-toggle.active .chevron {
-  transform: rotate(180deg);
+  transform: translateY(1px);
 }
 
-#analysisView .detail-panel {
+#analysisView .result-card .detail-panel {
   background: #ffffff;
   border-top: 1px solid #eef2f6;
   order: 30;
@@ -3615,4 +3615,10 @@ td {
 
 #analysisView .followup-panel {
   order: 40;
+}
+
+/* V3.10.5: 继续精简聊天结果卡片，减少说明性文字和提示噪音。 */
+#analysisView .chart-interaction,
+#analysisView .warning-list {
+  display: none !important;
 }
