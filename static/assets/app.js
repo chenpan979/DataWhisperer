@@ -312,6 +312,7 @@ async function runAnalysis() {
     renderResponse(data);
     setRunState("完成", "ok");
   } catch (error) {
+    el.assistantResultMessage.classList.remove("is-loading");
     setRunState("失败", "error");
     el.insightText.textContent = error.message;
     renderProcessTimeline(
@@ -326,6 +327,7 @@ async function runAnalysis() {
 }
 
 function renderResponse(data) {
+  el.assistantResultMessage.classList.remove("is-loading");
   el.metricRows.textContent = data.rows.length;
   el.metricColumns.textContent = data.columns.length;
   el.metricChart.textContent = chartTypeLabels[data.chart?.type] || data.chart?.type || "-";
@@ -345,6 +347,7 @@ function renderResponse(data) {
 
 function resetAnalysisResult(question) {
   el.assistantResultMessage.hidden = false;
+  el.assistantResultMessage.classList.add("is-loading");
   clearTypewriter();
   el.metricRows.textContent = "0";
   el.metricColumns.textContent = "0";
@@ -479,6 +482,66 @@ function renderConversationList(title = "新对话", subtitle = "等待数据问
       <span>品类占比 · 饼图</span>
     </button>
   `;
+}
+
+function hydrateConversationalCopy() {
+  const welcomeTitle = document.querySelector("#analysisView .welcome-card h2");
+  const welcomeIntro = document.querySelector("#analysisView .welcome-card > p");
+  const quickTitle = document.querySelector("#analysisView .quick-title");
+  const tabLabels = [
+    ["chart", "图表"],
+    ["table", "详细数据"],
+    ["sql", "生成 SQL"],
+  ];
+
+  if (welcomeTitle) {
+    welcomeTitle.textContent = "👋 你好，我是你的专属数据分析助手";
+  }
+  if (welcomeIntro) {
+    welcomeIntro.textContent = "不用写 SQL，用大白话提问，我就能自动连接数据库、生成可视化图表、给出业务分析结论。";
+  }
+  if (quickTitle) {
+    quickTitle.textContent = "快速开始分析：";
+  }
+
+  const sceneCards = [
+    {
+      question: "查询最近 6 个月每月销售额趋势",
+      icon: "↗",
+      title: "销售趋势分析",
+      desc: "查看销售额变化与增长",
+    },
+    {
+      question: "查询各商品品类销售额占比",
+      icon: "▦",
+      title: "商品结构分析",
+      desc: "品类占比与销量排名",
+    },
+    {
+      question: "哪个地区客单价最高",
+      icon: "◎",
+      title: "区域表现分析",
+      desc: "地区客单价与订单表现",
+    },
+  ];
+
+  document.querySelectorAll("#analysisView .scene-card").forEach((card, index) => {
+    const config = sceneCards[index];
+    if (!config) {
+      return;
+    }
+    card.dataset.question = config.question;
+    card.querySelector(".scene-icon").textContent = config.icon;
+    card.querySelector("strong").textContent = config.title;
+    card.querySelector("small").textContent = config.desc;
+  });
+
+  tabLabels.forEach(([tab, label]) => {
+    const button = document.querySelector(`#analysisView .tab[data-tab="${tab}"]`);
+    if (button) {
+      button.textContent = label;
+    }
+  });
 }
 
 function scrollChatToBottom() {
@@ -713,13 +776,62 @@ function enhanceChartOption(option) {
   enhanced.dataZoom = undefined;
   if (enhanced.xAxis) {
     enhanced.grid = {
-      left: 48,
-      right: 24,
-      top: 48,
-      bottom: 42,
+      left: 46,
+      right: 28,
+      top: 34,
+      bottom: 44,
       ...(enhanced.grid || {}),
       containLabel: true,
     };
+    enhanced.xAxis = {
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: "#718096", fontSize: 12 },
+      splitLine: { show: false },
+      ...enhanced.xAxis,
+    };
+    enhanced.yAxis = {
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: "#718096", fontSize: 12 },
+      splitLine: { lineStyle: { color: "#edf2f7", type: "dashed" } },
+      ...(enhanced.yAxis || {}),
+    };
+  }
+  if (Array.isArray(enhanced.series)) {
+    enhanced.series = enhanced.series.map((series) => {
+      if (series.type === "line") {
+        return {
+          ...series,
+          smooth: 0.38,
+          symbol: "circle",
+          symbolSize: 7,
+          lineStyle: { color: "#0d9488", width: 3 },
+          itemStyle: { color: "#0d9488", borderColor: "#ffffff", borderWidth: 2 },
+          areaStyle: {
+            color: {
+              type: "linear",
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: "rgba(13, 148, 136, 0.18)" },
+                { offset: 1, color: "rgba(13, 148, 136, 0.02)" },
+              ],
+            },
+          },
+        };
+      }
+      if (series.type === "bar") {
+        return {
+          ...series,
+          barMaxWidth: 46,
+          itemStyle: { color: "#0d9488", borderRadius: [7, 7, 0, 0] },
+        };
+      }
+      return series;
+    });
   }
   return enhanced;
 }
@@ -2388,6 +2500,7 @@ function bindEvents() {
 }
 
 bindEvents();
+hydrateConversationalCopy();
 setSqlContent(state.currentSql);
 renderConversationList();
 checkHealth();
