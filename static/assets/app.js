@@ -644,6 +644,7 @@ function toggleProcessPanel() {
 function switchView(viewId) {
   el.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === viewId));
   el.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.id === viewId));
+  toggleEvaluationDatasetMenu(false);
   if (viewId === "analysisView" && state.chart) {
     setTimeout(() => state.chart.resize(), 0);
   }
@@ -1166,6 +1167,7 @@ function renderEvaluationDatasetOptions() {
   }
   renderEvaluationDatasetMenu(options);
   updateEvaluationDatasetTrigger();
+  toggleEvaluationDatasetMenu(false);
 }
 
 function renderEvaluationDatasetMenu(options) {

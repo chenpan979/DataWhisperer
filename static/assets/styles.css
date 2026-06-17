@@ -1697,9 +1697,9 @@ td {
   border: 1px solid var(--line);
   border-radius: 8px;
   display: inline-flex;
-  gap: 10px;
-  min-height: 42px;
-  padding: 5px 6px 5px 12px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 5px 4px 10px;
   position: relative;
 }
 
@@ -1719,9 +1719,9 @@ td {
   display: inline-flex;
   gap: 10px;
   justify-content: space-between;
-  min-height: 32px;
-  min-width: 190px;
-  padding: 5px 9px 5px 10px;
+  min-height: 30px;
+  min-width: 172px;
+  padding: 4px 8px 4px 10px;
   text-align: left;
   transition:
     border-color 160ms var(--ease),
@@ -1747,7 +1747,7 @@ td {
 .evaluation-dataset-trigger strong {
   display: block;
   font-size: 13px;
-  max-width: 190px;
+  max-width: 168px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1757,6 +1757,10 @@ td {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.2;
+  max-width: 168px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .evaluation-dataset-trigger svg {
@@ -1775,17 +1779,21 @@ td {
   background: var(--surface);
   border: 1px solid #cfe2dc;
   border-radius: 8px;
-  box-shadow: 0 18px 42px rgba(20, 31, 27, 0.16);
+  box-shadow: 0 14px 32px rgba(20, 31, 27, 0.12);
   display: grid;
-  gap: 4px;
-  max-height: 260px;
-  min-width: 260px;
+  gap: 3px;
+  max-height: 220px;
+  min-width: 236px;
   overflow: auto;
-  padding: 6px;
+  padding: 5px;
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
   z-index: 20;
+}
+
+.evaluation-dataset-menu[hidden] {
+  display: none;
 }
 
 .evaluation-dataset-option {
@@ -1796,8 +1804,8 @@ td {
   cursor: pointer;
   display: grid;
   gap: 2px;
-  min-height: 42px;
-  padding: 8px 10px;
+  min-height: 38px;
+  padding: 7px 9px;
   text-align: left;
   width: 100%;
 }
@@ -1812,6 +1820,7 @@ td {
 
 .evaluation-dataset-option strong {
   font-size: 13px;
+  max-width: 216px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
