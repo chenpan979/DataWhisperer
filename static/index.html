@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.9.1" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.2" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.9.1"></script>
+    <script defer src="/static/assets/app.js?v=3.10.2"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -132,24 +132,82 @@
             <svg><use href="#icon-activity"></use></svg>
             <span>评测中心</span>
           </button>
+
+          <div class="conversation-list" aria-label="最近对话">
+            <div class="conversation-title">
+              <span>最近对话</span>
+              <button class="mini-icon-button" id="clearConversationButton" type="button" title="清空当前对话">
+                <svg><use href="#icon-refresh"></use></svg>
+              </button>
+            </div>
+            <div class="conversation-items" id="conversationList">
+              <button class="conversation-item active" type="button">
+                <strong>新对话</strong>
+                <span>等待数据问题</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-profile" aria-label="当前用户">
+            <div class="profile-avatar">管</div>
+            <div>
+              <strong>admin</strong>
+              <span>数据工作台管理员</span>
+            </div>
+          </div>
         </aside>
 
         <section class="view-stack">
           <section class="view-panel active" id="analysisView" aria-label="AI 查数">
             <div class="chat-workspace">
+              <header class="chat-session-header">
+                <div>
+                  <div class="chat-title-row">
+                    <h2 id="chatTitle">新对话</h2>
+                    <span>示例 MySQL 库</span>
+                  </div>
+                  <p>像和数据分析师聊天一样提问，系统会自动生成 SQL、查询数据并整理结论。</p>
+                </div>
+                <div class="chat-context">
+                  <span>当前生效条件</span>
+                  <strong id="currentCondition">无</strong>
+                  <button class="icon-button" id="resetContextButton" type="button" title="重置上下文">
+                    <svg><use href="#icon-refresh"></use></svg>
+                  </button>
+                </div>
+              </header>
+
               <section class="chat-thread" id="chatThread" aria-label="对话记录">
                 <article class="chat-message assistant welcome-message">
                   <div class="assistant-avatar" aria-hidden="true"></div>
                   <div class="message-stack">
                     <div class="message-author">DataWhisperer 助手</div>
                     <div class="chat-bubble welcome-card">
-                      <h2>你好，我是你的数据分析助手 👋</h2>
-                      <p>你可以用自然语言向我提问，我会自动生成 SQL 并查询数据，支持多轮追问和条件修正。</p>
+                      <h2>你好，我是你的专属数据分析助手</h2>
+                      <p>不用写 SQL，用大白话提问，我会自动连接数据库、生成可视化图表，并给出业务分析结论。</p>
+                      <div class="scene-grid" id="sceneGrid">
+                        <button class="scene-card" type="button" data-question="查询最近 6 个月每月销售额趋势">
+                          <span class="scene-icon">↗</span>
+                          <strong>销售趋势分析</strong>
+                          <small>查看销售额变化与增长</small>
+                        </button>
+                        <button class="scene-card" type="button" data-question="查询各商品品类销售额占比">
+                          <span class="scene-icon">▦</span>
+                          <strong>商品结构分析</strong>
+                          <small>品类占比与销售贡献</small>
+                        </button>
+                        <button class="scene-card" type="button" data-question="哪个地区客单价最高">
+                          <span class="scene-icon">◎</span>
+                          <strong>区域表现分析</strong>
+                          <small>地区客单价和订单表现</small>
+                        </button>
+                      </div>
                       <div class="welcome-meta">
                         <span>当前连接：示例 MySQL 库</span>
                         <button class="link-button" id="refreshExamplesButton" type="button">刷新示例</button>
                         <button class="link-button" id="loadSchemaButton" type="button">读取表结构</button>
                       </div>
+                      <p class="quick-title">也可以直接试试这些问题：</p>
                       <div class="example-list welcome-examples" id="exampleList"></div>
                       <div class="schema-box compact-schema" id="schemaBox">未加载表结构。</div>
                     </div>
@@ -161,6 +219,7 @@
                     <div class="message-author">你</div>
                     <div class="chat-bubble user-bubble" id="userQuestionText"></div>
                   </div>
+                  <div class="user-avatar" aria-hidden="true">我</div>
                 </article>
 
                 <article class="chat-message assistant result-message" id="assistantResultMessage" hidden>

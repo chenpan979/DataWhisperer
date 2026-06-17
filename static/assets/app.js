@@ -106,6 +106,11 @@ const fileManagers = {
 const el = {
   healthStatus: document.querySelector("#healthStatus"),
   newConversationButton: document.querySelector("#newConversationButton"),
+  clearConversationButton: document.querySelector("#clearConversationButton"),
+  conversationList: document.querySelector("#conversationList"),
+  chatTitle: document.querySelector("#chatTitle"),
+  currentCondition: document.querySelector("#currentCondition"),
+  resetContextButton: document.querySelector("#resetContextButton"),
   chatThread: document.querySelector("#chatThread"),
   userMessage: document.querySelector("#userMessage"),
   userQuestionText: document.querySelector("#userQuestionText"),
@@ -115,6 +120,7 @@ const el = {
   runButton: document.querySelector("#runButton"),
   refreshExamplesButton: document.querySelector("#refreshExamplesButton"),
   loadSchemaButton: document.querySelector("#loadSchemaButton"),
+  sceneGrid: document.querySelector("#sceneGrid"),
   exampleList: document.querySelector("#exampleList"),
   schemaBox: document.querySelector("#schemaBox"),
   metricRows: document.querySelector("#metricRows"),
@@ -371,6 +377,7 @@ function showConversationQuestion(question) {
   el.userMessage.hidden = false;
   el.userQuestionText.textContent = question;
   el.assistantResultMessage.hidden = false;
+  updateConversationMeta(question);
   scrollChatToBottom();
 }
 
@@ -383,7 +390,11 @@ function resetConversation() {
   }
   state.lastResponse = null;
   el.questionInput.value = "";
+  el.questionInput.style.height = "auto";
   el.userQuestionText.textContent = "";
+  el.chatTitle.textContent = "新对话";
+  el.currentCondition.textContent = "无";
+  renderConversationList("新对话", "等待数据问题");
   el.userMessage.hidden = true;
   el.assistantResultMessage.hidden = true;
   el.metricRows.textContent = "0";
@@ -416,6 +427,58 @@ function resetConversation() {
   });
   el.questionInput.focus();
   scrollChatToTop();
+}
+
+function updateConversationMeta(question) {
+  const title = question.length > 18 ? `${question.slice(0, 18)}...` : question;
+  el.chatTitle.textContent = title || "新对话";
+  const condition = inferQuestionCondition(question);
+  el.currentCondition.textContent = condition;
+  renderConversationList(title || "新对话", condition === "无" ? "示例 MySQL 库" : condition);
+}
+
+function inferQuestionCondition(question) {
+  const normalized = question.replace(/\s+/g, "");
+  const conditions = [];
+  if (/最近|近|上月|本月|季度|月份|月度|趋势/.test(normalized)) {
+    conditions.push("时间范围");
+  }
+  if (/6个?月|六个?月/.test(normalized)) {
+    conditions.push("最近6个月");
+  }
+  if (/地区|区域|华东|华北|华南|西部/.test(normalized)) {
+    conditions.push("地区维度");
+  }
+  if (/商品|产品|品类|销量|销售额/.test(normalized)) {
+    conditions.push("商品/销售口径");
+  }
+  if (/客单价|平均每单|订单均价/.test(normalized)) {
+    conditions.push("客单价口径");
+  }
+  if (/GMV|销售额|金额/.test(question)) {
+    conditions.push("金额指标");
+  }
+  return conditions.length ? Array.from(new Set(conditions)).join(" · ") : "无";
+}
+
+function renderConversationList(title = "新对话", subtitle = "等待数据问题") {
+  if (!el.conversationList) {
+    return;
+  }
+  el.conversationList.innerHTML = `
+    <button class="conversation-item active" type="button">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(subtitle)}</span>
+    </button>
+    <button class="conversation-item" type="button" data-question="查询最近 6 个月每月销售额趋势">
+      <strong>月度销售趋势分析</strong>
+      <span>最近6个月 · 折线图</span>
+    </button>
+    <button class="conversation-item" type="button" data-question="查询各商品品类销售额占比">
+      <strong>商品结构分析</strong>
+      <span>品类占比 · 饼图</span>
+    </button>
+  `;
 }
 
 function scrollChatToBottom() {
@@ -2180,7 +2243,16 @@ function escapeHtml(value) {
 
 function bindEvents() {
   el.newConversationButton?.addEventListener("click", resetConversation);
+  el.clearConversationButton?.addEventListener("click", resetConversation);
+  el.resetContextButton?.addEventListener("click", () => {
+    el.currentCondition.textContent = "无";
+    renderConversationList(el.chatTitle.textContent || "新对话", "上下文已重置");
+  });
   el.runButton.addEventListener("click", runAnalysis);
+  el.questionInput.addEventListener("input", () => {
+    el.questionInput.style.height = "auto";
+    el.questionInput.style.height = `${Math.min(el.questionInput.scrollHeight, 160)}px`;
+  });
   el.questionInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -2260,6 +2332,22 @@ function bindEvents() {
       }
     }
   });
+  el.sceneGrid?.addEventListener("click", (event) => {
+    const button = event.target.closest(".scene-card");
+    if (!button || el.runButton.disabled) {
+      return;
+    }
+    el.questionInput.value = button.dataset.question || "";
+    runAnalysis();
+  });
+  el.conversationList?.addEventListener("click", (event) => {
+    const button = event.target.closest(".conversation-item[data-question]");
+    if (!button || el.runButton.disabled) {
+      return;
+    }
+    el.questionInput.value = button.dataset.question || "";
+    runAnalysis();
+  });
 
   for (const category of Object.keys(fileManagers)) {
     const config = fileManagers[category];
@@ -2301,6 +2389,7 @@ function bindEvents() {
 
 bindEvents();
 setSqlContent(state.currentSql);
+renderConversationList();
 checkHealth();
 loadExamples();
 renderProcessTimeline([]);
