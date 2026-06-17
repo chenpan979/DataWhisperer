@@ -2255,6 +2255,9 @@ function bindEvents() {
       el.questionInput.value = example.question;
       el.questionInput.focus();
       scrollChatToBottom();
+      if (!el.runButton.disabled) {
+        runAnalysis();
+      }
     }
   });
 
