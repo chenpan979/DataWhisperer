@@ -3522,3 +3522,97 @@ td {
   margin-right: auto;
   max-width: 900px;
 }
+
+/* V3.10.4: 用户消息和结果详情按聊天产品形态继续收敛。 */
+#analysisView .user-message-meta {
+  color: #8a97a6;
+  font-size: 12px;
+  justify-content: flex-end;
+  min-height: 18px;
+  padding-right: 4px;
+}
+
+#analysisView .message-time {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+#analysisView .result-card {
+  border-top: 1px solid #eef2f6;
+}
+
+#analysisView .result-card .tabs {
+  display: none;
+}
+
+#analysisView .chart-panel {
+  order: 10;
+}
+
+#analysisView .result-detail-bar {
+  align-items: center;
+  background: #f8fafc;
+  border-top: 1px solid #eef2f6;
+  display: flex;
+  gap: 10px;
+  order: 20;
+  padding: 14px 20px;
+}
+
+#analysisView .detail-toggle {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbe5ec;
+  border-radius: 999px;
+  color: #475569;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease), color 160ms var(--ease);
+}
+
+#analysisView .detail-toggle svg {
+  height: 15px;
+  width: 15px;
+}
+
+#analysisView .detail-toggle .chevron {
+  height: 14px;
+  transition: transform 180ms var(--ease);
+  width: 14px;
+}
+
+#analysisView .detail-toggle:hover,
+#analysisView .detail-toggle.active {
+  background: #ecfdf8;
+  border-color: #a7e7dc;
+  color: #0d9488;
+}
+
+#analysisView .detail-toggle.active .chevron {
+  transform: rotate(180deg);
+}
+
+#analysisView .detail-panel {
+  background: #ffffff;
+  border-top: 1px solid #eef2f6;
+  order: 30;
+  padding: 16px 20px 20px;
+}
+
+#analysisView .detail-panel .result-toolbar,
+#analysisView .detail-panel .code-toolbar {
+  margin-bottom: 12px;
+}
+
+#analysisView .detail-panel .table-wrap,
+#analysisView .detail-panel .sql-viewer {
+  max-height: 330px;
+}
+
+#analysisView .followup-panel {
+  order: 40;
+}

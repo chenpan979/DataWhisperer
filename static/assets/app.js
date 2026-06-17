@@ -114,7 +114,9 @@ const el = {
   chatThread: document.querySelector("#chatThread"),
   userMessage: document.querySelector("#userMessage"),
   userQuestionText: document.querySelector("#userQuestionText"),
+  userMessageTime: document.querySelector("#userMessageTime"),
   assistantResultMessage: document.querySelector("#assistantResultMessage"),
+  assistantMessageTime: document.querySelector("#assistantMessageTime"),
   questionInput: document.querySelector("#questionInput"),
   maxRowsInput: document.querySelector("#maxRowsInput"),
   runButton: document.querySelector("#runButton"),
@@ -158,6 +160,7 @@ const el = {
   copySqlButton: document.querySelector("#copySqlButton"),
   tabs: document.querySelectorAll(".tab"),
   tabPanels: document.querySelectorAll(".tab-panel"),
+  resultDetailButtons: document.querySelectorAll(".detail-toggle"),
   navItems: document.querySelectorAll(".nav-item"),
   viewPanels: document.querySelectorAll(".view-panel"),
   refreshSchemaFilesButton: document.querySelector("#refreshSchemaFilesButton"),
@@ -348,6 +351,7 @@ function renderResponse(data) {
 function resetAnalysisResult(question) {
   el.assistantResultMessage.hidden = false;
   el.assistantResultMessage.classList.add("is-loading");
+  el.assistantMessageTime.textContent = currentMessageTime();
   clearTypewriter();
   el.metricRows.textContent = "0";
   el.metricColumns.textContent = "0";
@@ -371,12 +375,14 @@ function resetAnalysisResult(question) {
     warnings: [],
   });
   setProcessOpen(false);
+  closeResultDetails();
   renderTable([], []);
   renderChartSkeleton();
   scrollChatToBottom();
 }
 
 function showConversationQuestion(question) {
+  el.userMessageTime.textContent = currentMessageTime();
   el.userMessage.hidden = false;
   el.userQuestionText.textContent = question;
   el.assistantResultMessage.hidden = false;
@@ -395,6 +401,8 @@ function resetConversation() {
   el.questionInput.value = "";
   el.questionInput.style.height = "auto";
   el.userQuestionText.textContent = "";
+  el.userMessageTime.textContent = "--:--";
+  el.assistantMessageTime.textContent = "--:--";
   el.chatTitle.textContent = "新对话";
   el.currentCondition.textContent = "无";
   renderConversationList("新对话", "等待数据问题");
@@ -416,6 +424,7 @@ function resetConversation() {
   el.schemaBox.textContent = "未加载表结构。";
   setRunState("空闲", "idle");
   setProcessOpen(false);
+  closeResultDetails();
   renderProcessTimeline([]);
   renderTable([], []);
   renderChart({ type: "empty" }, []);
@@ -875,6 +884,30 @@ function switchTab(tabName) {
   if (tabName === "chart" && state.chart) {
     setTimeout(() => state.chart.resize(), 0);
   }
+}
+
+function setResultDetailOpen(targetName, open) {
+  el.resultDetailButtons.forEach((button) => {
+    const isTarget = button.dataset.detailTarget === targetName;
+    button.classList.toggle("active", isTarget && open);
+    button.setAttribute("aria-expanded", String(isTarget && open));
+  });
+
+  ["table", "sql"].forEach((name) => {
+    const panel = document.querySelector(`#${name}Panel`);
+    panel?.classList.toggle("active", name === targetName && open);
+  });
+}
+
+function closeResultDetails() {
+  setResultDetailOpen("table", false);
+  setResultDetailOpen("sql", false);
+}
+
+function toggleResultDetail(targetName) {
+  const button = Array.from(el.resultDetailButtons).find((item) => item.dataset.detailTarget === targetName);
+  const shouldOpen = button?.getAttribute("aria-expanded") !== "true";
+  setResultDetailOpen(targetName, shouldOpen);
 }
 
 function toggleTimelineItem(button) {
@@ -2353,6 +2386,14 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function currentMessageTime() {
+  return new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 function bindEvents() {
   el.newConversationButton?.addEventListener("click", resetConversation);
   el.clearConversationButton?.addEventListener("click", resetConversation);
@@ -2480,6 +2521,9 @@ function bindEvents() {
 
   el.tabs.forEach((tab) => {
     tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+  });
+  el.resultDetailButtons.forEach((button) => {
+    button.addEventListener("click", () => toggleResultDetail(button.dataset.detailTarget));
   });
   el.navItems.forEach((item) => {
     item.addEventListener("click", () => switchView(item.dataset.view));

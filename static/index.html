@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.3" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.4" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.10.3"></script>
+    <script defer src="/static/assets/app.js?v=3.10.4"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -216,7 +216,9 @@
 
                 <article class="chat-message user" id="userMessage" hidden>
                   <div class="message-stack align-right">
-                    <div class="message-author">你</div>
+                    <div class="message-author user-message-meta">
+                      <span id="userMessageTime">--:--</span>
+                    </div>
                     <div class="chat-bubble user-bubble" id="userQuestionText"></div>
                   </div>
                   <div class="user-avatar" aria-hidden="true">我</div>
@@ -227,6 +229,7 @@
                   <div class="message-stack">
                     <div class="message-author">
                       <span>DataWhisperer 助手</span>
+                      <span class="message-time" id="assistantMessageTime">--:--</span>
                       <span class="state-label" id="runState">空闲</span>
                     </div>
                     <div class="chat-bubble result-bubble">
@@ -243,9 +246,6 @@
                         </div>
                         <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
                         <div class="warning-list" id="warningList"></div>
-                        <div class="followup-panel" id="followupPanel" hidden>
-                          <div class="followup-list" id="followupList"></div>
-                        </div>
                       </section>
 
                       <div class="summary-band chat-summary">
@@ -281,13 +281,7 @@
                       </section>
 
                       <section class="result-card">
-                        <div class="tabs" role="tablist" aria-label="结果视图">
-                          <button class="tab active" data-tab="chart" type="button">图表</button>
-                          <button class="tab" data-tab="table" type="button">表格</button>
-                          <button class="tab" data-tab="sql" type="button">SQL</button>
-                        </div>
-
-                        <div class="tab-panel active" id="chartPanel">
+                        <div class="tab-panel active chart-panel" id="chartPanel">
                           <div class="result-toolbar">
                             <div>
                               <strong>图表导出</strong>
@@ -314,7 +308,20 @@
                           <div class="chart-interaction" id="chartInteraction">可悬停查看数据，点击图表元素查看明细。</div>
                         </div>
 
-                        <div class="tab-panel" id="tablePanel">
+                        <div class="result-detail-bar" aria-label="结果详情操作">
+                          <button class="detail-toggle" data-detail-target="table" type="button" aria-expanded="false">
+                            <svg><use href="#icon-table"></use></svg>
+                            <span>详细数据</span>
+                            <svg class="chevron"><use href="#icon-chevron"></use></svg>
+                          </button>
+                          <button class="detail-toggle" data-detail-target="sql" type="button" aria-expanded="false">
+                            <svg><use href="#icon-wand"></use></svg>
+                            <span>生成SQL</span>
+                            <svg class="chevron"><use href="#icon-chevron"></use></svg>
+                          </button>
+                        </div>
+
+                        <div class="tab-panel detail-panel" id="tablePanel">
                           <div class="result-toolbar">
                             <div>
                               <strong>表格导出</strong>
@@ -343,7 +350,7 @@
                           </div>
                         </div>
 
-                        <div class="tab-panel" id="sqlPanel">
+                        <div class="tab-panel detail-panel" id="sqlPanel">
                           <div class="code-toolbar">
                             <div>
                               <span>自然语言生成 SQL</span>
@@ -381,6 +388,10 @@
                           </div>
                         </div>
                       </section>
+
+                      <div class="followup-panel" id="followupPanel" hidden>
+                        <div class="followup-list" id="followupList"></div>
+                      </div>
                     </div>
                   </div>
                 </article>
