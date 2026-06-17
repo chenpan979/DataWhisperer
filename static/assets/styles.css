@@ -1708,10 +1708,12 @@ td {
   border: 1px solid var(--line);
   border-radius: 8px;
   display: inline-flex;
+  flex: 0 0 320px;
   gap: 8px;
   min-height: 38px;
   padding: 4px 5px 4px 10px;
   position: relative;
+  width: 320px;
 }
 
 .evaluation-dataset-select > span {
@@ -1728,10 +1730,11 @@ td {
   color: var(--text);
   cursor: pointer;
   display: inline-flex;
+  flex: 1 1 auto;
   gap: 10px;
   justify-content: space-between;
   min-height: 30px;
-  min-width: 172px;
+  min-width: 0;
   padding: 4px 8px 4px 10px;
   text-align: left;
   transition:
@@ -1751,14 +1754,16 @@ td {
 
 .evaluation-dataset-trigger > span {
   display: grid;
+  flex: 1 1 auto;
   gap: 1px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .evaluation-dataset-trigger strong {
   display: block;
   font-size: 13px;
-  max-width: 168px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1768,7 +1773,7 @@ td {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.2;
-  max-width: 168px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1794,7 +1799,7 @@ td {
   display: grid;
   gap: 3px;
   max-height: 220px;
-  min-width: 236px;
+  min-width: 100%;
   overflow: auto;
   padding: 5px;
   position: absolute;
