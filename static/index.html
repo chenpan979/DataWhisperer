@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.8.10" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.9.0" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.8.10"></script>
+    <script defer src="/static/assets/app.js?v=3.9.0"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -108,6 +108,10 @@
 
       <main class="console-layout">
         <aside class="side-nav" aria-label="模块导航">
+          <button class="new-chat-button" id="newConversationButton" type="button">
+            <span>+</span>
+            <strong>新建对话</strong>
+          </button>
           <button class="nav-item active" type="button" data-view="analysisView">
             <svg><use href="#icon-send"></use></svg>
             <span>AI 查数</span>
@@ -132,219 +136,217 @@
 
         <section class="view-stack">
           <section class="view-panel active" id="analysisView" aria-label="AI 查数">
-            <div class="workspace analysis-workspace">
-              <aside class="query-panel" aria-label="查询工作区">
-                <section class="panel">
-                  <div class="panel-heading">
-                    <div>
-                      <h2>数据问题</h2>
-                      <p>连接示例 MySQL 库</p>
-                    </div>
-                    <button class="icon-button" id="refreshExamplesButton" type="button" title="刷新示例">
-                      <svg><use href="#icon-refresh"></use></svg>
-                    </button>
-                  </div>
-
-                  <label class="field-label" for="questionInput">问题</label>
-                  <textarea
-                    id="questionInput"
-                    rows="7"
-                    spellcheck="false"
-                    placeholder="例如：查询各地区订单数量"
-                  ></textarea>
-
-                  <div class="control-row">
-                    <label class="field-label compact" for="maxRowsInput">行数</label>
-                    <input id="maxRowsInput" type="number" min="1" max="500" value="100" />
-                    <button class="primary-button" id="runButton" type="button">
-                      <svg><use href="#icon-send"></use></svg>
-                      <span>运行分析</span>
-                    </button>
-                  </div>
-                </section>
-
-                <section class="panel">
-                  <div class="panel-heading">
-                    <div>
-                      <h2>示例问题</h2>
-                      <p>来自 /api/examples</p>
+            <div class="chat-workspace">
+              <section class="chat-thread" id="chatThread" aria-label="对话记录">
+                <article class="chat-message assistant welcome-message">
+                  <div class="assistant-avatar" aria-hidden="true"></div>
+                  <div class="message-stack">
+                    <div class="message-author">DataWhisperer 助手</div>
+                    <div class="chat-bubble welcome-card">
+                      <h2>你好，我是你的数据分析助手</h2>
+                      <p>你可以用自然语言向我提问，我会自动生成 SQL、查询数据，并把结论、图表、表格和 SQL 放在同一次回复里。</p>
+                      <div class="welcome-meta">
+                        <span>当前连接：示例 MySQL 库</span>
+                        <button class="link-button" id="refreshExamplesButton" type="button">刷新示例</button>
+                        <button class="link-button" id="loadSchemaButton" type="button">读取表结构</button>
+                      </div>
+                      <div class="example-list welcome-examples" id="exampleList"></div>
+                      <div class="schema-box compact-schema" id="schemaBox">未加载表结构。</div>
                     </div>
                   </div>
-                  <div class="example-list" id="exampleList"></div>
-                </section>
+                </article>
 
-                <section class="panel">
-                  <div class="panel-heading">
-                    <div>
-                      <h2>表结构概览</h2>
-                      <p>来自 MySQL 示例库</p>
-                    </div>
-                    <button class="secondary-button" id="loadSchemaButton" type="button">
-                      <svg><use href="#icon-database"></use></svg>
-                      <span>读取</span>
-                    </button>
+                <article class="chat-message user" id="userMessage" hidden>
+                  <div class="message-stack align-right">
+                    <div class="message-author">你</div>
+                    <div class="chat-bubble user-bubble" id="userQuestionText"></div>
                   </div>
-                  <div class="schema-box" id="schemaBox">未加载</div>
-                </section>
-              </aside>
+                </article>
 
-              <section class="result-area" aria-label="分析结果">
-                <div class="summary-band">
-                  <div class="metric">
-                    <span>结果行数</span>
-                    <strong id="metricRows">0</strong>
-                  </div>
-                  <div class="metric">
-                    <span>字段数量</span>
-                    <strong id="metricColumns">0</strong>
-                  </div>
-                  <div class="metric">
-                    <span>图表类型</span>
-                    <strong id="metricChart">-</strong>
-                  </div>
-                  <div class="metric">
-                    <span>执行步骤</span>
-                    <strong id="metricTrace">0</strong>
-                  </div>
-                </div>
-
-                <section class="panel insight-panel">
-                  <div class="panel-heading">
-                    <div>
-                      <h2>分析结论</h2>
-                      <p id="activeQuestion">等待问题输入</p>
-                    </div>
-                    <div class="panel-actions">
-                      <button class="followup-toggle" id="followupToggle" type="button" aria-expanded="false" hidden>
-                        <span>追问建议</span>
-                        <svg><use href="#icon-chevron"></use></svg>
-                      </button>
+                <article class="chat-message assistant result-message" id="assistantResultMessage" hidden>
+                  <div class="assistant-avatar" aria-hidden="true"></div>
+                  <div class="message-stack">
+                    <div class="message-author">
+                      <span>DataWhisperer 助手</span>
                       <span class="state-label" id="runState">空闲</span>
                     </div>
-                  </div>
-                  <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
-                  <div class="warning-list" id="warningList"></div>
-                  <div class="followup-panel" id="followupPanel" hidden>
-                    <div class="followup-list" id="followupList"></div>
-                  </div>
-                </section>
-
-                <section class="panel process-panel collapsed" id="processPanel">
-                  <div class="panel-heading">
-                    <div>
-                      <h2>分析过程</h2>
-                      <p class="process-summary" id="processSummary">从理解问题到生成结果的完整链路，运行后会显示当前进度。</p>
-                    </div>
-                    <button class="secondary-button" id="toggleProcessButton" type="button">
-                      <span>查看过程</span>
-                    </button>
-                  </div>
-                  <ol class="process-timeline" id="processTimeline"></ol>
-                </section>
-
-                <section class="panel">
-                  <div class="tabs" role="tablist" aria-label="结果视图">
-                    <button class="tab active" data-tab="chart" type="button">图表</button>
-                    <button class="tab" data-tab="table" type="button">表格</button>
-                    <button class="tab" data-tab="sql" type="button">SQL</button>
-                  </div>
-
-                  <div class="tab-panel active" id="chartPanel">
-                    <div class="result-toolbar">
-                      <div>
-                        <strong>图表导出</strong>
-                        <span>用于报告、PPT 和二次编辑</span>
-                      </div>
-                      <div class="result-actions">
-                        <button class="secondary-button compact-button" id="copyChartPngButton" type="button">
-                          <svg><use href="#icon-copy"></use></svg>
-                          <span>复制 PNG</span>
-                        </button>
-                        <button class="secondary-button compact-button" id="downloadChartSvgButton" type="button">
-                          <svg><use href="#icon-download"></use></svg>
-                          <span>下载 SVG</span>
-                        </button>
-                        <button class="secondary-button compact-button" id="copyChartOptionButton" type="button">
-                          <svg><use href="#icon-copy"></use></svg>
-                          <span>复制配置</span>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="chart-host empty-chart" id="chartHost">
-                      <div class="empty-state">暂无图表</div>
-                    </div>
-                    <div class="chart-interaction" id="chartInteraction">可悬停查看数据，点击图表元素查看明细。</div>
-                  </div>
-
-                  <div class="tab-panel" id="tablePanel">
-                    <div class="result-toolbar">
-                      <div>
-                        <strong>表格导出</strong>
-                        <span>复制到 Word、Typora 或下载 CSV</span>
-                      </div>
-                      <div class="result-actions">
-                        <button class="secondary-button compact-button" id="copyTableHtmlButton" type="button">
-                          <svg><use href="#icon-table"></use></svg>
-                          <span>复制 Word 表格</span>
-                        </button>
-                        <button class="secondary-button compact-button" id="copyTableMarkdownButton" type="button">
-                          <svg><use href="#icon-copy"></use></svg>
-                          <span>复制 Markdown</span>
-                        </button>
-                        <button class="secondary-button compact-button" id="downloadCsvButton" type="button">
-                          <svg><use href="#icon-download"></use></svg>
-                          <span>下载 CSV</span>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="table-wrap">
-                      <table id="resultTable">
-                        <thead></thead>
-                        <tbody></tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div class="tab-panel" id="sqlPanel">
-                    <div class="code-toolbar">
-                      <div>
-                        <span>自然语言生成 SQL</span>
-                        <small id="sqlMeta">0 行</small>
-                      </div>
-                      <div class="code-actions">
-                        <button class="icon-button" id="formatSqlButton" type="button" title="格式化 SQL">
-                          <svg><use href="#icon-wand"></use></svg>
-                        </button>
-                        <button class="icon-button" id="downloadSqlButton" type="button" title="下载 SQL">
-                          <svg><use href="#icon-download"></use></svg>
-                        </button>
-                        <button class="icon-button" id="copySqlButton" type="button" title="复制 SQL">
-                          <svg><use href="#icon-copy"></use></svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="sql-review">
-                      <section class="sql-review-card">
-                        <span>原始问题</span>
-                        <strong id="sqlQuestionText">等待用户提问</strong>
+                    <div class="chat-bubble result-bubble">
+                      <section class="insight-panel chat-insight">
+                        <div class="panel-heading">
+                          <div>
+                            <h2>分析结论</h2>
+                            <p id="activeQuestion">等待问题输入</p>
+                          </div>
+                          <button class="followup-toggle" id="followupToggle" type="button" aria-expanded="false" hidden>
+                            <span>追问建议</span>
+                            <svg><use href="#icon-chevron"></use></svg>
+                          </button>
+                        </div>
+                        <p class="insight-text" id="insightText">运行一次分析后，这里会显示基于查询结果生成的业务结论。</p>
+                        <div class="warning-list" id="warningList"></div>
+                        <div class="followup-panel" id="followupPanel" hidden>
+                          <div class="followup-list" id="followupList"></div>
+                        </div>
                       </section>
-                      <section class="sql-review-card">
-                        <span>生成说明</span>
-                        <p id="sqlExplanationText">运行分析后，这里会说明 SQL 的查询意图、聚合口径和排序逻辑。</p>
+
+                      <div class="summary-band chat-summary">
+                        <div class="metric">
+                          <span>结果行数</span>
+                          <strong id="metricRows">0</strong>
+                        </div>
+                        <div class="metric">
+                          <span>字段数量</span>
+                          <strong id="metricColumns">0</strong>
+                        </div>
+                        <div class="metric">
+                          <span>图表类型</span>
+                          <strong id="metricChart">-</strong>
+                        </div>
+                        <div class="metric">
+                          <span>执行步骤</span>
+                          <strong id="metricTrace">0</strong>
+                        </div>
+                      </div>
+
+                      <section class="process-panel collapsed" id="processPanel">
+                        <div class="panel-heading">
+                          <div>
+                            <h2>分析过程</h2>
+                            <p class="process-summary" id="processSummary">从理解问题到生成结果的完整链路，运行后会显示当前进度。</p>
+                          </div>
+                          <button class="secondary-button" id="toggleProcessButton" type="button">
+                            <span>查看过程</span>
+                          </button>
+                        </div>
+                        <ol class="process-timeline" id="processTimeline"></ol>
                       </section>
-                      <section class="sql-review-card">
-                        <span>校验结果</span>
-                        <div class="sql-check-list" id="sqlCheckList"></div>
+
+                      <section class="result-card">
+                        <div class="tabs" role="tablist" aria-label="结果视图">
+                          <button class="tab active" data-tab="chart" type="button">图表</button>
+                          <button class="tab" data-tab="table" type="button">表格</button>
+                          <button class="tab" data-tab="sql" type="button">SQL</button>
+                        </div>
+
+                        <div class="tab-panel active" id="chartPanel">
+                          <div class="result-toolbar">
+                            <div>
+                              <strong>图表导出</strong>
+                              <span>用于报告、PPT 和二次编辑</span>
+                            </div>
+                            <div class="result-actions">
+                              <button class="secondary-button compact-button" id="copyChartPngButton" type="button">
+                                <svg><use href="#icon-copy"></use></svg>
+                                <span>复制 PNG</span>
+                              </button>
+                              <button class="secondary-button compact-button" id="downloadChartSvgButton" type="button">
+                                <svg><use href="#icon-download"></use></svg>
+                                <span>下载 SVG</span>
+                              </button>
+                              <button class="secondary-button compact-button" id="copyChartOptionButton" type="button">
+                                <svg><use href="#icon-copy"></use></svg>
+                                <span>复制配置</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div class="chart-host empty-chart" id="chartHost">
+                            <div class="empty-state">暂无图表</div>
+                          </div>
+                          <div class="chart-interaction" id="chartInteraction">可悬停查看数据，点击图表元素查看明细。</div>
+                        </div>
+
+                        <div class="tab-panel" id="tablePanel">
+                          <div class="result-toolbar">
+                            <div>
+                              <strong>表格导出</strong>
+                              <span>复制到 Word、Typora 或下载 CSV</span>
+                            </div>
+                            <div class="result-actions">
+                              <button class="secondary-button compact-button" id="copyTableHtmlButton" type="button">
+                                <svg><use href="#icon-table"></use></svg>
+                                <span>复制 Word 表格</span>
+                              </button>
+                              <button class="secondary-button compact-button" id="copyTableMarkdownButton" type="button">
+                                <svg><use href="#icon-copy"></use></svg>
+                                <span>复制 Markdown</span>
+                              </button>
+                              <button class="secondary-button compact-button" id="downloadCsvButton" type="button">
+                                <svg><use href="#icon-download"></use></svg>
+                                <span>下载 CSV</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div class="table-wrap">
+                            <table id="resultTable">
+                              <thead></thead>
+                              <tbody></tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div class="tab-panel" id="sqlPanel">
+                          <div class="code-toolbar">
+                            <div>
+                              <span>自然语言生成 SQL</span>
+                              <small id="sqlMeta">0 行</small>
+                            </div>
+                            <div class="code-actions">
+                              <button class="icon-button" id="formatSqlButton" type="button" title="格式化 SQL">
+                                <svg><use href="#icon-wand"></use></svg>
+                              </button>
+                              <button class="icon-button" id="downloadSqlButton" type="button" title="下载 SQL">
+                                <svg><use href="#icon-download"></use></svg>
+                              </button>
+                              <button class="icon-button" id="copySqlButton" type="button" title="复制 SQL">
+                                <svg><use href="#icon-copy"></use></svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div class="sql-review">
+                            <section class="sql-review-card">
+                              <span>原始问题</span>
+                              <strong id="sqlQuestionText">等待用户提问</strong>
+                            </section>
+                            <section class="sql-review-card">
+                              <span>生成说明</span>
+                              <p id="sqlExplanationText">运行分析后，这里会说明 SQL 的查询意图、聚合口径和排序逻辑。</p>
+                            </section>
+                            <section class="sql-review-card">
+                              <span>校验结果</span>
+                              <div class="sql-check-list" id="sqlCheckList"></div>
+                            </section>
+                          </div>
+                          <div class="sql-viewer" id="sqlViewer">
+                            <pre class="sql-line-numbers" id="sqlLineNumbers" aria-hidden="true">1</pre>
+                            <pre class="sql-block"><code id="sqlBlock">-- SQL will appear here</code></pre>
+                          </div>
+                        </div>
                       </section>
-                    </div>
-                    <div class="sql-viewer" id="sqlViewer">
-                      <pre class="sql-line-numbers" id="sqlLineNumbers" aria-hidden="true">1</pre>
-                      <pre class="sql-block"><code id="sqlBlock">-- SQL will appear here</code></pre>
                     </div>
                   </div>
-                </section>
-                  </section>
+                </article>
+              </section>
+
+              <div class="chat-composer-wrap">
+                <div class="chat-composer">
+                  <textarea
+                    id="questionInput"
+                    rows="2"
+                    spellcheck="false"
+                    placeholder="输入你的数据问题，支持多轮追问..."
+                  ></textarea>
+                  <input class="visually-hidden" id="maxRowsInput" type="number" min="1" max="500" value="100" />
+                  <button class="primary-button composer-send" id="runButton" type="button" title="发送">
+                    <svg><use href="#icon-send"></use></svg>
+                    <span>发送</span>
+                  </button>
                 </div>
+                <div class="composer-hint">
+                  <span>按 Enter 发送，Shift + Enter 换行</span>
+                  <span>当前连接：示例 MySQL 库</span>
+                </div>
+              </div>
+            </div>
           </section>
 
           <section class="view-panel" id="schemaView" aria-label="数据结构">

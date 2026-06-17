@@ -105,6 +105,11 @@ const fileManagers = {
 
 const el = {
   healthStatus: document.querySelector("#healthStatus"),
+  newConversationButton: document.querySelector("#newConversationButton"),
+  chatThread: document.querySelector("#chatThread"),
+  userMessage: document.querySelector("#userMessage"),
+  userQuestionText: document.querySelector("#userQuestionText"),
+  assistantResultMessage: document.querySelector("#assistantResultMessage"),
   questionInput: document.querySelector("#questionInput"),
   maxRowsInput: document.querySelector("#maxRowsInput"),
   runButton: document.querySelector("#runButton"),
@@ -246,6 +251,7 @@ function renderExamples() {
 }
 
 async function loadSchema() {
+  el.schemaBox.classList.add("is-visible");
   el.schemaBox.textContent = "读取中";
   try {
     const data = await fetchJson("/api/schema/overview");
@@ -286,6 +292,7 @@ async function runAnalysis() {
   setRunState("分析中", "");
   el.runButton.disabled = true;
   el.runButton.querySelector("span").textContent = "分析中";
+  showConversationQuestion(question);
   resetAnalysisResult(question);
   startPendingProcess();
 
@@ -307,7 +314,8 @@ async function runAnalysis() {
   } finally {
     stopPendingProcess();
     el.runButton.disabled = false;
-    el.runButton.querySelector("span").textContent = "运行分析";
+    el.runButton.querySelector("span").textContent = "发送";
+    scrollChatToBottom();
   }
 }
 
@@ -326,9 +334,11 @@ function renderResponse(data) {
   renderChart(data.chart, data.rows);
   typeInsight(data.insight || "暂无分析结论。");
   renderFollowups(generateFollowupQuestions(data));
+  scrollChatToBottom();
 }
 
 function resetAnalysisResult(question) {
+  el.assistantResultMessage.hidden = false;
   clearTypewriter();
   el.metricRows.textContent = "0";
   el.metricColumns.textContent = "0";
@@ -354,6 +364,74 @@ function resetAnalysisResult(question) {
   setProcessOpen(false);
   renderTable([], []);
   renderChartSkeleton();
+  scrollChatToBottom();
+}
+
+function showConversationQuestion(question) {
+  el.userMessage.hidden = false;
+  el.userQuestionText.textContent = question;
+  el.assistantResultMessage.hidden = false;
+  scrollChatToBottom();
+}
+
+function resetConversation() {
+  clearTypewriter();
+  stopPendingProcess();
+  if (state.chart) {
+    state.chart.dispose();
+    state.chart = null;
+  }
+  state.lastResponse = null;
+  el.questionInput.value = "";
+  el.userQuestionText.textContent = "";
+  el.userMessage.hidden = true;
+  el.assistantResultMessage.hidden = true;
+  el.metricRows.textContent = "0";
+  el.metricColumns.textContent = "0";
+  el.metricChart.textContent = "-";
+  el.metricTrace.textContent = "0";
+  el.activeQuestion.textContent = "等待问题输入";
+  el.insightText.textContent = "运行一次分析后，这里会显示基于查询结果生成的业务结论。";
+  el.insightText.classList.remove("streaming");
+  el.warningList.innerHTML = "";
+  el.followupPanel.hidden = true;
+  el.followupToggle.hidden = true;
+  el.followupList.innerHTML = "";
+  setFollowupsOpen(false);
+  el.schemaBox.classList.remove("is-visible");
+  el.schemaBox.textContent = "未加载表结构。";
+  setRunState("空闲", "idle");
+  setProcessOpen(false);
+  renderProcessTimeline([]);
+  renderTable([], []);
+  renderChart({ type: "empty" }, []);
+  setSqlContent("-- SQL will appear here");
+  renderSqlReview({
+    question: "",
+    generated_sql: "",
+    sql_explanation: "",
+    trace_steps: [],
+    rows: [],
+    warnings: [],
+  });
+  el.questionInput.focus();
+  scrollChatToTop();
+}
+
+function scrollChatToBottom() {
+  requestAnimationFrame(() => {
+    if (el.chatThread) {
+      el.chatThread.scrollTo({ top: el.chatThread.scrollHeight, behavior: "smooth" });
+    }
+  });
+}
+
+function scrollChatToTop() {
+  requestAnimationFrame(() => {
+    if (el.chatThread) {
+      el.chatThread.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  });
 }
 
 function startPendingProcess() {
@@ -2101,7 +2179,14 @@ function escapeHtml(value) {
 }
 
 function bindEvents() {
+  el.newConversationButton?.addEventListener("click", resetConversation);
   el.runButton.addEventListener("click", runAnalysis);
+  el.questionInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      runAnalysis();
+    }
+  });
   el.refreshExamplesButton.addEventListener("click", loadExamples);
   el.loadSchemaButton.addEventListener("click", loadSchema);
   el.formatSqlButton.addEventListener("click", formatCurrentSql);
@@ -2169,6 +2254,7 @@ function bindEvents() {
     if (example) {
       el.questionInput.value = example.question;
       el.questionInput.focus();
+      scrollChatToBottom();
     }
   });
 
