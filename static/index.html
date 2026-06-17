@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.5" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.6" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.10.5"></script>
+    <script defer src="/static/assets/app.js?v=3.10.6"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -367,20 +367,6 @@
                                 <svg><use href="#icon-copy"></use></svg>
                               </button>
                             </div>
-                          </div>
-                          <div class="sql-review">
-                            <section class="sql-review-card">
-                              <span>原始问题</span>
-                              <strong id="sqlQuestionText">等待用户提问</strong>
-                            </section>
-                            <section class="sql-review-card">
-                              <span>生成说明</span>
-                              <p id="sqlExplanationText">运行分析后，这里会说明 SQL 的查询意图、聚合口径和排序逻辑。</p>
-                            </section>
-                            <section class="sql-review-card">
-                              <span>校验结果</span>
-                              <div class="sql-check-list" id="sqlCheckList"></div>
-                            </section>
                           </div>
                           <div class="sql-viewer" id="sqlViewer">
                             <pre class="sql-line-numbers" id="sqlLineNumbers" aria-hidden="true">1</pre>
