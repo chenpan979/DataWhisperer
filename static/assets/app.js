@@ -298,6 +298,7 @@ async function runAnalysis() {
     return;
   }
 
+  archiveCurrentTurn();
   setRunState("分析中", "");
   el.runButton.disabled = true;
   el.runButton.querySelector("span").textContent = "分析中";
@@ -390,6 +391,64 @@ function showConversationQuestion(question) {
   scrollChatToBottom();
 }
 
+function archiveCurrentTurn() {
+  if (
+    el.userMessage.hidden ||
+    el.assistantResultMessage.hidden ||
+    el.assistantResultMessage.classList.contains("is-loading")
+  ) {
+    return;
+  }
+
+  const chartSnapshot = createChartSnapshot();
+  const archivedUser = cloneAsHistoryNode(el.userMessage);
+  const archivedAssistant = cloneAsHistoryNode(el.assistantResultMessage);
+
+  if (chartSnapshot) {
+    const archivedChartHost = archivedAssistant.querySelector(".chart-host");
+    if (archivedChartHost) {
+      archivedChartHost.classList.remove("empty-chart");
+      archivedChartHost.innerHTML = `<img class="chart-history-image" src="${chartSnapshot}" alt="上一轮分析图表" />`;
+    }
+  }
+
+  archivedAssistant.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
+  archivedAssistant.querySelectorAll(".result-actions, .code-actions, .result-detail-bar").forEach((node) => {
+    node.hidden = true;
+  });
+  archivedAssistant.querySelectorAll("button").forEach((button) => {
+    button.disabled = true;
+    button.setAttribute("aria-disabled", "true");
+  });
+
+  el.chatThread.insertBefore(archivedUser, el.userMessage);
+  el.chatThread.insertBefore(archivedAssistant, el.userMessage);
+}
+
+function createChartSnapshot() {
+  if (!state.chart) {
+    return "";
+  }
+  try {
+    return state.chart.getDataURL({
+      backgroundColor: "#ffffff",
+      pixelRatio: 2,
+    });
+  } catch (error) {
+    console.warn("Chart snapshot failed.", error);
+    return "";
+  }
+}
+
+function cloneAsHistoryNode(source) {
+  const clone = source.cloneNode(true);
+  clone.hidden = false;
+  clone.removeAttribute("id");
+  clone.classList.add("archived-turn");
+  clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+  return clone;
+}
+
 function resetConversation() {
   clearTypewriter();
   stopPendingProcess();
@@ -400,6 +459,7 @@ function resetConversation() {
   state.lastResponse = null;
   el.questionInput.value = "";
   el.questionInput.style.height = "auto";
+  el.chatThread.querySelectorAll(".archived-turn").forEach((node) => node.remove());
   el.userQuestionText.textContent = "";
   el.userMessageTime.textContent = "--:--";
   el.assistantMessageTime.textContent = "--:--";

@@ -3297,6 +3297,24 @@ td {
   max-width: 790px;
 }
 #analysisView .result-message { max-width: 790px; }
+#analysisView .archived-turn {
+  animation: none;
+}
+#analysisView .archived-turn .chat-bubble {
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.03), 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+#analysisView .archived-turn .state-label {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+#analysisView .chart-history-image {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  width: 100%;
+}
 #analysisView .assistant-avatar {
   background: linear-gradient(135deg, #0d9488, #14b8a6);
   box-shadow: 0 12px 28px rgba(13, 148, 136, 0.18);
