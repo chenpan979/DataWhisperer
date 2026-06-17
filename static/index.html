@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.8.8" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.8.9" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.8.8"></script>
+    <script defer src="/static/assets/app.js?v=3.8.9"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -605,7 +605,7 @@
                       <option value="">内置评测集</option>
                     </select>
                   </div>
-                  <span class="muted-text" id="evaluationRunMeta">尚未运行</span>
+                  <span class="visually-hidden" id="evaluationRunMeta" aria-live="polite">尚未运行</span>
                   <button class="primary-button compact-button" id="runEvaluationButton" type="button">
                     <svg><use href="#icon-activity"></use></svg>
                     <span>运行评测</span>
