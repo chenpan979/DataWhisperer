@@ -399,7 +399,15 @@ function disposeSchemaGraph() {
     return;
   }
   cancelAnimationFrame(graph.animationId);
-  graph.labels.forEach((label) => label.remove());
+  graph.labels.forEach((label) => label.element?.remove());
+  graph.nodeMeshes.forEach((mesh) => {
+    mesh.geometry?.dispose();
+    mesh.material?.dispose();
+  });
+  graph.edgeLines?.forEach((line) => {
+    line.geometry?.dispose();
+    line.material?.dispose();
+  });
   graph.renderer?.dispose();
   el.schemaGraphCanvas.replaceChildren();
   state.schemaGraph = null;
@@ -446,6 +454,7 @@ function renderSchemaGraph(graph) {
 
   const nodePositions = buildSchemaNodePositions(graph.nodes);
   const nodeMeshes = [];
+  const edgeLines = [];
   const nodeById = new Map();
   const labels = [];
 
@@ -459,6 +468,7 @@ function renderSchemaGraph(graph) {
     const material = new THREE.LineBasicMaterial({ color: 0x8ab8c0, transparent: true, opacity: 0.52 });
     const line = new THREE.Line(geometry, material);
     group.add(line);
+    edgeLines.push(line);
   });
 
   graph.nodes.forEach((node) => {
@@ -492,6 +502,7 @@ function renderSchemaGraph(graph) {
     renderer,
     group,
     nodeMeshes,
+    edgeLines,
     nodeById,
     labels,
     raycaster: new THREE.Raycaster(),

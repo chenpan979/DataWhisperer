@@ -2275,6 +2275,7 @@ td {
 .schema-detail-body {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 18px;
 }
@@ -2391,6 +2392,7 @@ td {
   border-collapse: separate;
   border-radius: 9px;
   border-spacing: 0;
+  table-layout: fixed;
   overflow: hidden;
   width: 100%;
 }
@@ -2399,8 +2401,25 @@ td {
 .schema-field-table td {
   border-bottom: 1px solid #edf2f0;
   font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 8px 10px;
   text-align: left;
+}
+
+.schema-field-table th:nth-child(1),
+.schema-field-table td:nth-child(1) {
+  width: 38%;
+}
+
+.schema-field-table th:nth-child(2),
+.schema-field-table td:nth-child(2) {
+  width: 32%;
+}
+
+.schema-field-table th:nth-child(3),
+.schema-field-table td:nth-child(3) {
+  width: 30%;
 }
 
 .schema-field-table th {
@@ -2441,6 +2460,8 @@ td {
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
+  max-width: 100%;
+  min-width: 0;
   padding: 10px 11px;
 }
 
@@ -2455,6 +2476,10 @@ td {
   color: var(--accent-strong);
   font-size: 12px;
   font-weight: 800;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inline-empty {
