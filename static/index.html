@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.11" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.12" />
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.10.11"></script>
+    <script defer src="/static/assets/app.js?v=3.10.12"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -67,6 +67,18 @@
       </symbol>
       <symbol id="icon-activity" viewBox="0 0 24 24">
         <path d="M22 12h-4l-3 8L9 4l-3 8H2"></path>
+      </symbol>
+      <symbol id="icon-cog" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.8 1.8 0 0 0-1-1.6 1.8 1.8 0 0 0-2 .4l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.8 1.8 0 0 0 1.6-1 1.8 1.8 0 0 0-.4-2l-.1-.1A2 2 0 0 1 7 4l.1.1a1.8 1.8 0 0 0 2 .4 1.8 1.8 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.8 1.8 0 0 0 1 1.6 1.8 1.8 0 0 0 2-.4l.1-.1A2 2 0 0 1 20 7l-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1H21a2 2 0 0 1 0 4h-.1a1.8 1.8 0 0 0-1.5 1Z"></path>
+      </symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path>
+        <path d="m9 12 2 2 4-5"></path>
+      </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4"></circle>
+        <path d="M4 22a8 8 0 0 1 16 0"></path>
       </symbol>
       <symbol id="icon-upload" viewBox="0 0 24 24">
         <path d="M12 3v12"></path>
@@ -131,6 +143,10 @@
           <button class="nav-item" type="button" data-view="evaluationView">
             <svg><use href="#icon-activity"></use></svg>
             <span>评测中心</span>
+          </button>
+          <button class="nav-item" type="button" data-view="settingsView">
+            <svg><use href="#icon-cog"></use></svg>
+            <span>系统设置</span>
           </button>
 
           <div class="conversation-list" aria-label="最近对话">
@@ -817,6 +833,231 @@
                   </section>
                 </div>
               </section>
+            </div>
+          </section>
+
+          <section class="view-panel" id="settingsView" aria-label="系统设置">
+            <div class="settings-workspace">
+              <div class="section-head settings-head">
+                <div>
+                  <h2>系统设置</h2>
+                  <p>集中管理数据源、模型参数、账户偏好和安全策略，后续可以接入真实租户与配置中心。</p>
+                </div>
+                <div class="settings-head-actions">
+                  <span class="state-label ok" id="settingsSaveState">本地草稿</span>
+                  <button class="secondary-button compact-button" id="settingsResetButton" type="button">
+                    <svg><use href="#icon-refresh"></use></svg>
+                    <span>恢复默认</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="settings-summary-grid" aria-label="设置概览">
+                <article>
+                  <span>当前数据源</span>
+                  <strong id="settingsSummaryDatasource">示例 MySQL 库</strong>
+                  <p>用于 AI 查数、schema 读取和演示查询。</p>
+                </article>
+                <article>
+                  <span>大模型服务</span>
+                  <strong id="settingsSummaryModel">DashScope / qwen-plus</strong>
+                  <p>统一走 OpenAI-compatible Chat Completions。</p>
+                </article>
+                <article>
+                  <span>安全边界</span>
+                  <strong>只读 SQL</strong>
+                  <p>默认禁止写入、删除、DDL、多语句和危险函数。</p>
+                </article>
+              </div>
+
+              <div class="settings-grid">
+                <section class="settings-card settings-card-wide">
+                  <div class="settings-card-head">
+                    <div class="settings-icon">
+                      <svg><use href="#icon-database"></use></svg>
+                    </div>
+                    <div>
+                      <h3>数据源配置</h3>
+                      <p>配置业务数据库连接信息，当前版本用于展示和连接检测。</p>
+                    </div>
+                    <span class="state-label ok" id="settingsDbState">已连接</span>
+                  </div>
+                  <div class="settings-form-grid">
+                    <label class="settings-field settings-field-wide">
+                      <span>数据源名称</span>
+                      <input id="settingsDatasourceName" type="text" value="示例 MySQL 库" />
+                    </label>
+                    <label class="settings-field">
+                      <span>数据库类型</span>
+                      <select id="settingsDbType">
+                        <option>MySQL</option>
+                        <option>PostgreSQL</option>
+                        <option>ClickHouse</option>
+                        <option>SQL Server</option>
+                        <option>Oracle</option>
+                      </select>
+                    </label>
+                    <label class="settings-field">
+                      <span>主机地址</span>
+                      <input id="settingsDbHost" type="text" value="127.0.0.1" />
+                    </label>
+                    <label class="settings-field">
+                      <span>端口</span>
+                      <input id="settingsDbPort" type="text" value="3306" />
+                    </label>
+                    <label class="settings-field">
+                      <span>数据库名</span>
+                      <input id="settingsDbName" type="text" value="datawhisperer_demo" />
+                    </label>
+                    <label class="settings-field">
+                      <span>用户名</span>
+                      <input id="settingsDbUser" type="text" value="root" />
+                    </label>
+                    <label class="settings-field">
+                      <span>密码</span>
+                      <div class="settings-password">
+                        <input id="settingsDbPassword" type="password" value="******" autocomplete="new-password" />
+                        <button id="settingsPasswordToggle" type="button" title="显示或隐藏密码">
+                          <svg><use href="#icon-eye"></use></svg>
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                  <div class="settings-card-actions">
+                    <p id="settingsConnectionHint">连接检测会请求后端健康检查和表结构接口，不会在浏览器里保存真实密码。</p>
+                    <button class="secondary-button compact-button" id="settingsTestConnectionButton" type="button">
+                      <svg><use href="#icon-refresh"></use></svg>
+                      <span>测试连接</span>
+                    </button>
+                    <button class="primary-button compact-button" id="settingsSaveDatasourceButton" type="button">
+                      <svg><use href="#icon-check"></use></svg>
+                      <span>保存草稿</span>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="settings-card">
+                  <div class="settings-card-head">
+                    <div class="settings-icon">
+                      <svg><use href="#icon-brain"></use></svg>
+                    </div>
+                    <div>
+                      <h3>模型配置</h3>
+                      <p>管理 Chat 模型与 Embedding 模型，便于后续灰度切换。</p>
+                    </div>
+                  </div>
+                  <div class="settings-form-grid single">
+                    <label class="settings-field">
+                      <span>模型供应商</span>
+                      <select id="settingsProvider">
+                        <option>DashScope</option>
+                        <option>OpenAI</option>
+                        <option>DeepSeek</option>
+                        <option>本地兼容服务</option>
+                      </select>
+                    </label>
+                    <label class="settings-field">
+                      <span>Base URL</span>
+                      <input id="settingsBaseUrl" type="text" value="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+                    </label>
+                    <label class="settings-field">
+                      <span>Chat 模型</span>
+                      <input id="settingsChatModel" type="text" value="qwen-plus" />
+                    </label>
+                    <label class="settings-field">
+                      <span>Embedding 模型</span>
+                      <input id="settingsEmbeddingModel" type="text" value="text-embedding-v4" />
+                    </label>
+                  </div>
+                  <button class="secondary-button settings-full-button" id="settingsSaveModelButton" type="button">
+                    <svg><use href="#icon-check"></use></svg>
+                    <span>保存模型配置</span>
+                  </button>
+                </section>
+
+                <section class="settings-card">
+                  <div class="settings-card-head">
+                    <div class="settings-icon">
+                      <svg><use href="#icon-user"></use></svg>
+                    </div>
+                    <div>
+                      <h3>账户偏好</h3>
+                      <p>配置工作台展示名称、语言和默认体验。</p>
+                    </div>
+                  </div>
+                  <div class="profile-settings-row">
+                    <div class="profile-avatar large">管</div>
+                    <div>
+                      <strong>admin</strong>
+                      <span>数据工作台管理员</span>
+                    </div>
+                  </div>
+                  <div class="settings-form-grid single">
+                    <label class="settings-field">
+                      <span>显示名称</span>
+                      <input id="settingsDisplayName" type="text" value="admin" />
+                    </label>
+                    <label class="settings-field">
+                      <span>界面语言</span>
+                      <select id="settingsLanguage">
+                        <option value="zh-CN">简体中文</option>
+                        <option value="en-US">English</option>
+                      </select>
+                    </label>
+                    <label class="settings-field">
+                      <span>默认打开页</span>
+                      <select id="settingsDefaultView">
+                        <option value="analysisView">AI 查数</option>
+                        <option value="schemaView">数据结构</option>
+                        <option value="ragView">RAG 知识库</option>
+                        <option value="evaluationView">评测中心</option>
+                      </select>
+                    </label>
+                  </div>
+                  <button class="secondary-button settings-full-button" id="settingsSaveProfileButton" type="button">
+                    <svg><use href="#icon-check"></use></svg>
+                    <span>保存账户偏好</span>
+                  </button>
+                </section>
+
+                <section class="settings-card settings-card-wide">
+                  <div class="settings-card-head">
+                    <div class="settings-icon">
+                      <svg><use href="#icon-shield"></use></svg>
+                    </div>
+                    <div>
+                      <h3>安全策略</h3>
+                      <p>把系统的关键安全边界显式展示出来，便于面试和团队协作时说明设计原则。</p>
+                    </div>
+                  </div>
+                  <div class="settings-policy-grid">
+                    <label class="settings-toggle">
+                      <input type="checkbox" checked disabled />
+                      <span></span>
+                      <strong>只允许 SELECT / WITH 查询</strong>
+                      <small>禁止写入、删除、DDL、授权和存储过程。</small>
+                    </label>
+                    <label class="settings-toggle">
+                      <input type="checkbox" checked disabled />
+                      <span></span>
+                      <strong>自动补充 LIMIT</strong>
+                      <small>避免一次返回过多数据影响演示和数据库稳定性。</small>
+                    </label>
+                    <label class="settings-toggle">
+                      <input type="checkbox" checked disabled />
+                      <span></span>
+                      <strong>保留执行轨迹</strong>
+                      <small>记录 schema、指标检索、SQL 生成、查询执行和结论生成链路。</small>
+                    </label>
+                    <label class="settings-toggle">
+                      <input type="checkbox" checked disabled />
+                      <span></span>
+                      <strong>敏感配置后端托管</strong>
+                      <small>浏览器只保存展示草稿，真实密钥后续应加密存储在服务端。</small>
+                    </label>
+                  </div>
+                </section>
+              </div>
             </div>
           </section>
         </section>

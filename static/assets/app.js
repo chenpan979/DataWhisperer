@@ -11,11 +11,31 @@ const state = {
   evaluationFilter: "all",
   evaluationLoaded: false,
   evaluationTab: "overview",
+  settingsLoaded: false,
   files: {
     schema: [],
     rag: [],
     evaluation: [],
   },
+};
+
+const settingsStorageKey = "datawhisperer.systemSettings.v1";
+
+const defaultSettings = {
+  datasourceName: "示例 MySQL 库",
+  dbType: "MySQL",
+  dbHost: "127.0.0.1",
+  dbPort: "3306",
+  dbName: "datawhisperer_demo",
+  dbUser: "root",
+  dbPassword: "******",
+  provider: "DashScope",
+  baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  chatModel: "qwen-plus",
+  embeddingModel: "text-embedding-v4",
+  displayName: "admin",
+  language: "zh-CN",
+  defaultView: "analysisView",
 };
 
 const pendingProcessSteps = [
@@ -186,6 +206,31 @@ const el = {
   evaluationCaseList: document.querySelector("#evaluationCaseList"),
   evaluationModelBody: document.querySelector("#evaluationModelBody"),
   evaluationErrorList: document.querySelector("#evaluationErrorList"),
+  settingsSaveState: document.querySelector("#settingsSaveState"),
+  settingsSummaryDatasource: document.querySelector("#settingsSummaryDatasource"),
+  settingsSummaryModel: document.querySelector("#settingsSummaryModel"),
+  settingsDbState: document.querySelector("#settingsDbState"),
+  settingsDatasourceName: document.querySelector("#settingsDatasourceName"),
+  settingsDbType: document.querySelector("#settingsDbType"),
+  settingsDbHost: document.querySelector("#settingsDbHost"),
+  settingsDbPort: document.querySelector("#settingsDbPort"),
+  settingsDbName: document.querySelector("#settingsDbName"),
+  settingsDbUser: document.querySelector("#settingsDbUser"),
+  settingsDbPassword: document.querySelector("#settingsDbPassword"),
+  settingsPasswordToggle: document.querySelector("#settingsPasswordToggle"),
+  settingsConnectionHint: document.querySelector("#settingsConnectionHint"),
+  settingsTestConnectionButton: document.querySelector("#settingsTestConnectionButton"),
+  settingsSaveDatasourceButton: document.querySelector("#settingsSaveDatasourceButton"),
+  settingsProvider: document.querySelector("#settingsProvider"),
+  settingsBaseUrl: document.querySelector("#settingsBaseUrl"),
+  settingsChatModel: document.querySelector("#settingsChatModel"),
+  settingsEmbeddingModel: document.querySelector("#settingsEmbeddingModel"),
+  settingsDisplayName: document.querySelector("#settingsDisplayName"),
+  settingsLanguage: document.querySelector("#settingsLanguage"),
+  settingsDefaultView: document.querySelector("#settingsDefaultView"),
+  settingsSaveModelButton: document.querySelector("#settingsSaveModelButton"),
+  settingsSaveProfileButton: document.querySelector("#settingsSaveProfileButton"),
+  settingsResetButton: document.querySelector("#settingsResetButton"),
 };
 
 function setRunState(label, kind = "idle") {
@@ -987,6 +1032,161 @@ function toggleProcessPanel() {
   setProcessOpen(!state.processOpen);
 }
 
+function readSettingsDraft() {
+  try {
+    const stored = localStorage.getItem(settingsStorageKey);
+    return stored ? { ...defaultSettings, ...JSON.parse(stored) } : { ...defaultSettings };
+  } catch {
+    return { ...defaultSettings };
+  }
+}
+
+function writeSettingsDraft(settings) {
+  localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
+}
+
+function setControlValue(control, value) {
+  if (!control) {
+    return;
+  }
+  control.value = value ?? "";
+}
+
+function collectSettingsDraft() {
+  return {
+    datasourceName: el.settingsDatasourceName?.value.trim() || defaultSettings.datasourceName,
+    dbType: el.settingsDbType?.value || defaultSettings.dbType,
+    dbHost: el.settingsDbHost?.value.trim() || defaultSettings.dbHost,
+    dbPort: el.settingsDbPort?.value.trim() || defaultSettings.dbPort,
+    dbName: el.settingsDbName?.value.trim() || defaultSettings.dbName,
+    dbUser: el.settingsDbUser?.value.trim() || defaultSettings.dbUser,
+    dbPassword: el.settingsDbPassword?.value || defaultSettings.dbPassword,
+    provider: el.settingsProvider?.value || defaultSettings.provider,
+    baseUrl: el.settingsBaseUrl?.value.trim() || defaultSettings.baseUrl,
+    chatModel: el.settingsChatModel?.value.trim() || defaultSettings.chatModel,
+    embeddingModel: el.settingsEmbeddingModel?.value.trim() || defaultSettings.embeddingModel,
+    displayName: el.settingsDisplayName?.value.trim() || defaultSettings.displayName,
+    language: el.settingsLanguage?.value || defaultSettings.language,
+    defaultView: el.settingsDefaultView?.value || defaultSettings.defaultView,
+  };
+}
+
+function setSettingsStatus(label, kind = "ok") {
+  if (!el.settingsSaveState) {
+    return;
+  }
+  el.settingsSaveState.textContent = label;
+  el.settingsSaveState.className = `state-label ${kind}`;
+}
+
+function renderSettingsSummary(settings) {
+  if (el.settingsSummaryDatasource) {
+    el.settingsSummaryDatasource.textContent = settings.datasourceName || defaultSettings.datasourceName;
+  }
+  if (el.settingsSummaryModel) {
+    el.settingsSummaryModel.textContent = `${settings.provider || defaultSettings.provider} / ${
+      settings.chatModel || defaultSettings.chatModel
+    }`;
+  }
+}
+
+function hydrateSettingsForm() {
+  const settings = readSettingsDraft();
+  setControlValue(el.settingsDatasourceName, settings.datasourceName);
+  setControlValue(el.settingsDbType, settings.dbType);
+  setControlValue(el.settingsDbHost, settings.dbHost);
+  setControlValue(el.settingsDbPort, settings.dbPort);
+  setControlValue(el.settingsDbName, settings.dbName);
+  setControlValue(el.settingsDbUser, settings.dbUser);
+  setControlValue(el.settingsDbPassword, settings.dbPassword);
+  setControlValue(el.settingsProvider, settings.provider);
+  setControlValue(el.settingsBaseUrl, settings.baseUrl);
+  setControlValue(el.settingsChatModel, settings.chatModel);
+  setControlValue(el.settingsEmbeddingModel, settings.embeddingModel);
+  setControlValue(el.settingsDisplayName, settings.displayName);
+  setControlValue(el.settingsLanguage, settings.language);
+  setControlValue(el.settingsDefaultView, settings.defaultView);
+  renderSettingsSummary(settings);
+  state.settingsLoaded = true;
+}
+
+function saveSettingsDraft(button, sectionLabel) {
+  const settings = collectSettingsDraft();
+  writeSettingsDraft(settings);
+  renderSettingsSummary(settings);
+  setSettingsStatus(`${sectionLabel}已保存`, "ok");
+  markButtonDone(button, "已保存");
+}
+
+function resetSettingsDraft() {
+  localStorage.removeItem(settingsStorageKey);
+  hydrateSettingsForm();
+  setSettingsStatus("已恢复默认", "ok");
+  markButtonDone(el.settingsResetButton, "已恢复");
+}
+
+function toggleSettingsPassword() {
+  if (!el.settingsDbPassword) {
+    return;
+  }
+  el.settingsDbPassword.type = el.settingsDbPassword.type === "password" ? "text" : "password";
+}
+
+async function testSettingsConnection() {
+  if (!el.settingsTestConnectionButton) {
+    return;
+  }
+  const settingsCard = el.settingsTestConnectionButton.closest(".settings-card");
+  const buttonText = el.settingsTestConnectionButton.querySelector("span");
+  const originalText = buttonText?.textContent || "测试连接";
+  el.settingsTestConnectionButton.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "检测中";
+  }
+  settingsCard?.classList.add("is-testing");
+  setSettingsStatus("连接检测中", "warning");
+  if (el.settingsDbState) {
+    el.settingsDbState.textContent = "检测中";
+    el.settingsDbState.className = "state-label warning";
+  }
+  try {
+    await fetchJson("/api/health");
+    const schema = await fetchJson("/api/schema/overview");
+    const tableCount = schema?.tables?.length ?? 0;
+    if (el.settingsConnectionHint) {
+      el.settingsConnectionHint.textContent = `连接正常，已读取 ${tableCount} 张表。当前页面保存的是配置草稿，真实密钥仍建议由后端加密托管。`;
+    }
+    if (el.settingsDbState) {
+      el.settingsDbState.textContent = "已连接";
+      el.settingsDbState.className = "state-label ok";
+    }
+    setSettingsStatus("连接正常", "ok");
+    if (buttonText) {
+      buttonText.textContent = "连接正常";
+      setTimeout(() => {
+        if (buttonText.textContent === "连接正常") {
+          buttonText.textContent = originalText;
+        }
+      }, 1200);
+    }
+  } catch (error) {
+    if (el.settingsConnectionHint) {
+      el.settingsConnectionHint.textContent = `连接检测失败：${error.message}`;
+    }
+    if (el.settingsDbState) {
+      el.settingsDbState.textContent = "连接失败";
+      el.settingsDbState.className = "state-label error";
+    }
+    setSettingsStatus("连接失败", "error");
+  } finally {
+    el.settingsTestConnectionButton.disabled = false;
+    if (buttonText && buttonText.textContent === "检测中") {
+      buttonText.textContent = originalText;
+    }
+    settingsCard?.classList.remove("is-testing");
+  }
+}
+
 function switchView(viewId) {
   el.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === viewId));
   el.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.id === viewId));
@@ -1005,6 +1205,9 @@ function switchView(viewId) {
   }
   if (viewId === "datasetView") {
     loadManagedFiles("evaluation");
+  }
+  if (viewId === "settingsView" && !state.settingsLoaded) {
+    hydrateSettingsForm();
   }
   if (viewId === "evaluationView" && state.evaluationTrendChart) {
     setTimeout(() => state.evaluationTrendChart.resize(), 0);
@@ -2517,6 +2720,20 @@ function bindEvents() {
     selectEvaluationDataset(button.dataset.id);
   });
   el.runEvaluationButton.addEventListener("click", runEvaluations);
+  el.settingsPasswordToggle?.addEventListener("click", toggleSettingsPassword);
+  el.settingsTestConnectionButton?.addEventListener("click", testSettingsConnection);
+  el.settingsSaveDatasourceButton?.addEventListener("click", () =>
+    saveSettingsDraft(el.settingsSaveDatasourceButton, "数据源配置"),
+  );
+  el.settingsSaveModelButton?.addEventListener("click", () => saveSettingsDraft(el.settingsSaveModelButton, "模型配置"));
+  el.settingsSaveProfileButton?.addEventListener("click", () =>
+    saveSettingsDraft(el.settingsSaveProfileButton, "账户偏好"),
+  );
+  el.settingsResetButton?.addEventListener("click", resetSettingsDraft);
+  document.querySelectorAll("#settingsView input, #settingsView select").forEach((control) => {
+    control.addEventListener("input", () => setSettingsStatus("有未保存修改", "warning"));
+    control.addEventListener("change", () => setSettingsStatus("有未保存修改", "warning"));
+  });
   bindEvaluationTabs();
   el.evaluationFilters.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-filter]");
@@ -2613,3 +2830,4 @@ renderProcessTimeline([]);
 loadManagedFiles("schema");
 loadManagedFiles("rag");
 loadManagedFiles("evaluation");
+hydrateSettingsForm();
