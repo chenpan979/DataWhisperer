@@ -15,6 +15,9 @@ const state = {
   schemaTab: "files",
   schemaGraphLoaded: false,
   schemaGraph: null,
+  conversations: [],
+  activeConversationId: null,
+  conversationSerial: 0,
   files: {
     schema: [],
     rag: [],
@@ -858,6 +861,7 @@ function renderResponse(data) {
   renderChart(data.chart, data.rows);
   typeInsight(data.insight || "暂无分析结论。");
   renderFollowups(generateFollowupQuestions(data));
+  saveConversationTurn(data);
   scrollChatToBottom();
 }
 
@@ -961,7 +965,84 @@ function cloneAsHistoryNode(source) {
   return clone;
 }
 
-function resetConversation() {
+function saveConversationTurn(data) {
+  const conversation = ensureActiveConversation();
+  const exists = conversation.turns.some((turn) => turn.traceId === data.trace_id);
+  if (!exists) {
+    conversation.turns.push({
+      traceId: data.trace_id || `turn-${Date.now()}`,
+      question: data.question,
+      insight: data.insight || "暂无分析结论。",
+      rowCount: data.rows?.length || 0,
+      columnCount: data.columns?.length || 0,
+      chartType: chartTypeLabels[data.chart?.type] || data.chart?.type || "-",
+      createdAt: currentMessageTime(),
+    });
+  }
+  conversation.preview = data.insight || data.question || "已完成分析";
+  conversation.updatedAt = Date.now();
+  renderConversationList();
+}
+
+function renderConversationTurns(conversation) {
+  el.chatThread.querySelectorAll(".archived-turn").forEach((node) => node.remove());
+  (conversation.turns || []).forEach((turn) => {
+    el.chatThread.insertBefore(createHistoryUserNode(turn), el.userMessage);
+    el.chatThread.insertBefore(createHistoryAssistantNode(turn), el.userMessage);
+  });
+  if (conversation.turns?.length) {
+    scrollChatToBottom();
+  }
+}
+
+function createHistoryUserNode(turn) {
+  const article = document.createElement("article");
+  article.className = "chat-message user archived-turn";
+  article.innerHTML = `
+    <div class="message-stack align-right">
+      <div class="message-author user-message-meta">
+        <span>${escapeHtml(turn.createdAt || "--:--")}</span>
+      </div>
+      <div class="chat-bubble user-bubble">${escapeHtml(turn.question || "")}</div>
+    </div>
+    <div class="user-avatar" aria-hidden="true">我</div>
+  `;
+  return article;
+}
+
+function createHistoryAssistantNode(turn) {
+  const article = document.createElement("article");
+  article.className = "chat-message assistant result-message archived-turn conversation-history-turn";
+  article.innerHTML = `
+    <div class="assistant-avatar" aria-hidden="true"></div>
+    <div class="message-stack">
+      <div class="message-author">
+        <span>DataWhisperer 助手</span>
+        <span class="message-time">${escapeHtml(turn.createdAt || "--:--")}</span>
+      </div>
+      <div class="chat-bubble result-bubble">
+        <p class="history-insight">${escapeHtml(turn.insight || "暂无分析结论。")}</p>
+        <div class="history-metrics" aria-label="历史分析摘要">
+          <span>${Number(turn.rowCount || 0)} 行结果</span>
+          <span>${Number(turn.columnCount || 0)} 个字段</span>
+          <span>${escapeHtml(turn.chartType || "-")}</span>
+        </div>
+      </div>
+    </div>
+  `;
+  return article;
+}
+
+function resetConversation(options = {}) {
+  const conversation = ensureActiveConversation();
+  const preserveConversation = Boolean(options.preserveConversation);
+  if (!preserveConversation) {
+    conversation.title = "新对话";
+    conversation.subtitle = "等待数据问题";
+    conversation.preview = "等待数据问题";
+    conversation.turns = [];
+    conversation.updatedAt = Date.now();
+  }
   clearTypewriter();
   stopPendingProcess();
   if (state.chart) {
@@ -975,9 +1056,9 @@ function resetConversation() {
   el.userQuestionText.textContent = "";
   el.userMessageTime.textContent = "--:--";
   el.assistantMessageTime.textContent = "--:--";
-  el.chatTitle.textContent = "新对话";
-  el.currentCondition.textContent = "无";
-  renderConversationList("新对话", "等待数据问题");
+  el.chatTitle.textContent = conversation.title || "新对话";
+  el.currentCondition.textContent = conversation.subtitle === "等待数据问题" ? "无" : conversation.subtitle || "无";
+  renderConversationList();
   el.userMessage.hidden = true;
   el.assistantResultMessage.hidden = true;
   el.metricRows.textContent = "0";
@@ -1014,11 +1095,16 @@ function resetConversation() {
 }
 
 function updateConversationMeta(question) {
-  const title = question.length > 18 ? `${question.slice(0, 18)}...` : question;
+  const conversation = ensureActiveConversation();
+  const title = makeConversationTitle(question);
   el.chatTitle.textContent = title || "新对话";
   const condition = inferQuestionCondition(question);
   el.currentCondition.textContent = condition;
-  renderConversationList(title || "新对话", condition === "无" ? "示例 MySQL 库" : condition);
+  conversation.title = title || "新对话";
+  conversation.subtitle = condition === "无" ? "示例 MySQL 库" : condition;
+  conversation.preview = question;
+  conversation.updatedAt = Date.now();
+  renderConversationList();
 }
 
 function inferQuestionCondition(question) {
@@ -1045,24 +1131,27 @@ function inferQuestionCondition(question) {
   return conditions.length ? Array.from(new Set(conditions)).join(" · ") : "无";
 }
 
-function renderConversationList(title = "新对话", subtitle = "等待数据问题") {
+function renderConversationList() {
   if (!el.conversationList) {
     return;
   }
-  el.conversationList.innerHTML = `
-    <button class="conversation-item active" type="button">
-      <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(subtitle)}</span>
-    </button>
-    <button class="conversation-item" type="button" data-question="查询最近 6 个月每月销售额趋势">
-      <strong>月度销售趋势分析</strong>
-      <span>最近6个月 · 折线图</span>
-    </button>
-    <button class="conversation-item" type="button" data-question="查询各商品品类销售额占比">
-      <strong>商品结构分析</strong>
-      <span>品类占比 · 饼图</span>
-    </button>
-  `;
+  ensureActiveConversation();
+  el.conversationList.innerHTML = state.conversations
+    .map((conversation) => {
+      const isActive = conversation.id === state.activeConversationId;
+      const turnText = conversation.turns?.length ? `${conversation.turns.length} 轮问答` : conversation.subtitle;
+      return `
+        <button
+          class="conversation-item ${isActive ? "active" : ""}"
+          type="button"
+          data-conversation-id="${escapeHtml(conversation.id)}"
+        >
+          <strong>${escapeHtml(conversation.title)}</strong>
+          <span>${escapeHtml(turnText || "等待数据问题")}</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function hydrateConversationalCopy() {
@@ -3128,12 +3217,69 @@ function currentMessageTime() {
   });
 }
 
+function createConversation({ activate = true } = {}) {
+  const conversation = {
+    id: `conversation-${Date.now()}-${++state.conversationSerial}`,
+    title: "新对话",
+    subtitle: "等待数据问题",
+    preview: "等待数据问题",
+    updatedAt: Date.now(),
+    turns: [],
+  };
+  state.conversations.unshift(conversation);
+  if (activate) {
+    state.activeConversationId = conversation.id;
+  }
+  return conversation;
+}
+
+function getActiveConversation() {
+  return state.conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
+}
+
+function ensureActiveConversation() {
+  let conversation = getActiveConversation();
+  if (!conversation) {
+    conversation = createConversation();
+  }
+  return conversation;
+}
+
+function makeConversationTitle(question) {
+  const normalized = question.trim();
+  return normalized.length > 18 ? `${normalized.slice(0, 18)}...` : normalized || "新对话";
+}
+
+function startNewConversation() {
+  createConversation();
+  resetConversation({ preserveConversation: true });
+  switchView("analysisView");
+}
+
+function switchConversation(conversationId) {
+  if (el.runButton.disabled || conversationId === state.activeConversationId) {
+    return;
+  }
+  const conversation = state.conversations.find((item) => item.id === conversationId);
+  if (!conversation) {
+    return;
+  }
+  state.activeConversationId = conversation.id;
+  resetConversation({ preserveConversation: true });
+  renderConversationTurns(conversation);
+  renderConversationList();
+  switchView("analysisView");
+}
+
 function bindEvents() {
-  el.newConversationButton?.addEventListener("click", resetConversation);
+  el.newConversationButton?.addEventListener("click", startNewConversation);
   el.clearConversationButton?.addEventListener("click", resetConversation);
   el.resetContextButton?.addEventListener("click", () => {
+    const conversation = ensureActiveConversation();
     el.currentCondition.textContent = "无";
-    renderConversationList(el.chatTitle.textContent || "新对话", "上下文已重置");
+    conversation.subtitle = "上下文已重置";
+    conversation.updatedAt = Date.now();
+    renderConversationList();
   });
   el.runButton.addEventListener("click", runAnalysis);
   el.questionInput.addEventListener("input", () => {
@@ -3251,12 +3397,11 @@ function bindEvents() {
     runAnalysis();
   });
   el.conversationList?.addEventListener("click", (event) => {
-    const button = event.target.closest(".conversation-item[data-question]");
+    const button = event.target.closest(".conversation-item[data-conversation-id]");
     if (!button || el.runButton.disabled) {
       return;
     }
-    el.questionInput.value = button.dataset.question || "";
-    runAnalysis();
+    switchConversation(button.dataset.conversationId);
   });
 
   for (const category of Object.keys(fileManagers)) {

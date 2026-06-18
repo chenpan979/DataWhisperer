@@ -261,6 +261,35 @@ svg {
   white-space: nowrap;
 }
 
+.conversation-history-turn .result-bubble {
+  gap: 12px;
+}
+
+.history-insight {
+  color: #0f253d;
+  line-height: 1.75;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-metrics {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-metrics span {
+  background: #f1fbf8;
+  border: 1px solid #cfeee6;
+  border-radius: 999px;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 10px;
+}
+
 .sidebar-profile {
   align-items: center;
   background: #f7faf9;
