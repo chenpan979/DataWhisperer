@@ -4,9 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.10.12" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.0" />
+    <script defer src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.10.12"></script>
+    <script defer src="/static/assets/app.js?v=3.11.0"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -428,7 +429,14 @@
           </section>
 
           <section class="view-panel" id="schemaView" aria-label="数据结构">
-            <div class="manager-layout">
+            <div class="schema-workspace">
+              <div class="schema-view-tabs" role="tablist" aria-label="数据结构视图">
+                <button class="active" type="button" data-schema-tab="files">资料管理</button>
+                <button type="button" data-schema-tab="graph">3D 关系图谱</button>
+              </div>
+
+              <div class="schema-tab-panel active" id="schemaFilesPanel">
+                <div class="manager-layout">
               <section class="manager-main">
                 <div class="section-head">
                   <div>
@@ -499,6 +507,57 @@
                 </div>
                 <pre class="preview-block empty" id="schemaPreviewBlock">选择左侧文件后查看内容。</pre>
               </aside>
+                </div>
+              </div>
+
+              <div class="schema-tab-panel" id="schemaGraphPanel">
+                <div class="schema-graph-layout">
+                  <section class="schema-graph-main" aria-label="数据库 3D 关系图谱">
+                    <div class="schema-graph-head">
+                      <div>
+                        <h2>3D 数据关系图谱</h2>
+                        <p>从本地数据库自动读取表、主键、外键和字段信息，拖拽旋转即可查看表之间的关系。</p>
+                      </div>
+                      <div class="schema-graph-actions">
+                        <span class="state-label" id="schemaGraphState">等待加载</span>
+                        <button class="secondary-button compact-button" id="schemaGraphRefreshButton" type="button">
+                          <svg><use href="#icon-refresh"></use></svg>
+                          <span>刷新图谱</span>
+                        </button>
+                        <button class="secondary-button compact-button" id="schemaGraphResetButton" type="button">
+                          <svg><use href="#icon-refresh"></use></svg>
+                          <span>重置视角</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="schema-graph-stage" id="schemaGraphStage">
+                      <div class="schema-graph-canvas" id="schemaGraphCanvas" aria-label="3D 数据库表关系图谱"></div>
+                      <div class="schema-graph-legend">
+                        <span><i class="fact"></i>事实表</span>
+                        <span><i class="dimension"></i>维度表</span>
+                        <span><i class="bridge"></i>关联表</span>
+                      </div>
+                      <div class="schema-graph-empty" id="schemaGraphEmpty">正在生成 3D 图谱...</div>
+                    </div>
+                  </section>
+
+                  <aside class="schema-detail-drawer" id="schemaDetailDrawer" aria-label="表详情">
+                    <div class="schema-detail-head">
+                      <strong>表详情</strong>
+                      <button class="mini-icon-button" id="schemaDetailCloseButton" type="button" title="收起详情">
+                        ×
+                      </button>
+                    </div>
+                    <div class="schema-detail-body" id="schemaDetailBody">
+                      <div class="schema-detail-empty">
+                        <svg><use href="#icon-table"></use></svg>
+                        <strong>选择一张表</strong>
+                        <span>点击左侧 3D 图谱中的节点，这里会展示表名、主键、核心字段和关联关系。</span>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+              </div>
             </div>
           </section>
 

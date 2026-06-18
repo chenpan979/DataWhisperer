@@ -12,6 +12,9 @@ const state = {
   evaluationLoaded: false,
   evaluationTab: "overview",
   settingsLoaded: false,
+  schemaTab: "files",
+  schemaGraphLoaded: false,
+  schemaGraph: null,
   files: {
     schema: [],
     rag: [],
@@ -185,6 +188,16 @@ const el = {
   viewPanels: document.querySelectorAll(".view-panel"),
   refreshSchemaFilesButton: document.querySelector("#refreshSchemaFilesButton"),
   refreshRagFilesButton: document.querySelector("#refreshRagFilesButton"),
+  schemaTabs: document.querySelectorAll("[data-schema-tab]"),
+  schemaTabPanels: document.querySelectorAll(".schema-tab-panel"),
+  schemaGraphState: document.querySelector("#schemaGraphState"),
+  schemaGraphRefreshButton: document.querySelector("#schemaGraphRefreshButton"),
+  schemaGraphResetButton: document.querySelector("#schemaGraphResetButton"),
+  schemaGraphStage: document.querySelector("#schemaGraphStage"),
+  schemaGraphCanvas: document.querySelector("#schemaGraphCanvas"),
+  schemaGraphEmpty: document.querySelector("#schemaGraphEmpty"),
+  schemaDetailBody: document.querySelector("#schemaDetailBody"),
+  schemaDetailCloseButton: document.querySelector("#schemaDetailCloseButton"),
   runEvaluationButton: document.querySelector("#runEvaluationButton"),
   evaluationRunMeta: document.querySelector("#evaluationRunMeta"),
   evaluationDatasetSelect: document.querySelector("#evaluationDatasetSelect"),
@@ -332,6 +345,449 @@ async function loadSchema() {
   } catch (error) {
     el.schemaBox.innerHTML = `<div class="warning-item">${escapeHtml(error.message)}</div>`;
   }
+}
+
+function setSchemaGraphState(label, kind = "") {
+  if (!el.schemaGraphState) {
+    return;
+  }
+  el.schemaGraphState.textContent = label;
+  el.schemaGraphState.className = `state-label ${kind}`;
+}
+
+function switchSchemaTab(tabName) {
+  state.schemaTab = tabName;
+  el.schemaTabs.forEach((button) => button.classList.toggle("active", button.dataset.schemaTab === tabName));
+  el.schemaTabPanels.forEach((panel) => {
+    const targetId = tabName === "graph" ? "schemaGraphPanel" : "schemaFilesPanel";
+    panel.classList.toggle("active", panel.id === targetId);
+  });
+  if (tabName === "graph") {
+    loadSchemaGraph();
+    setTimeout(resizeSchemaGraph, 0);
+  }
+}
+
+async function loadSchemaGraph(force = false) {
+  if (!el.schemaGraphCanvas || (state.schemaGraphLoaded && !force)) {
+    return;
+  }
+  setSchemaGraphState("加载中", "warning");
+  setSchemaGraphEmpty("正在生成 3D 图谱...");
+  try {
+    const graph = await fetchJson("/api/schema/graph");
+    state.schemaGraphLoaded = true;
+    renderSchemaGraph(graph);
+    setSchemaGraphState(`${graph.node_count || 0} 张表 · ${graph.edge_count || 0} 条关系`, "ok");
+  } catch (error) {
+    setSchemaGraphState("加载失败", "error");
+    setSchemaGraphEmpty(error.message);
+  }
+}
+
+function setSchemaGraphEmpty(message, hidden = false) {
+  if (!el.schemaGraphEmpty) {
+    return;
+  }
+  el.schemaGraphEmpty.textContent = message;
+  el.schemaGraphEmpty.hidden = hidden;
+}
+
+function disposeSchemaGraph() {
+  const graph = state.schemaGraph;
+  if (!graph) {
+    return;
+  }
+  cancelAnimationFrame(graph.animationId);
+  graph.labels.forEach((label) => label.remove());
+  graph.renderer?.dispose();
+  el.schemaGraphCanvas.replaceChildren();
+  state.schemaGraph = null;
+}
+
+function renderSchemaGraph(graph) {
+  if (!window.THREE) {
+    setSchemaGraphState("Three.js 未加载", "error");
+    setSchemaGraphEmpty("3D 引擎加载失败，请检查网络或稍后刷新。");
+    return;
+  }
+  if (!graph.nodes?.length) {
+    setSchemaGraphEmpty("当前数据库还没有读取到表结构。");
+    return;
+  }
+
+  disposeSchemaGraph();
+  setSchemaGraphEmpty("", true);
+
+  const container = el.schemaGraphCanvas;
+  const width = Math.max(container.clientWidth, 260);
+  const height = Math.max(container.clientHeight, 480);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0xf8fafc, 360, 760);
+
+  const camera = new THREE.PerspectiveCamera(48, width / height, 0.1, 1200);
+  camera.position.set(0, 26, 285);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(width, height);
+  renderer.setClearColor(0x000000, 0);
+  container.appendChild(renderer.domElement);
+
+  const group = new THREE.Group();
+  scene.add(group);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.6);
+  keyLight.position.set(80, 120, 120);
+  scene.add(keyLight);
+  const rimLight = new THREE.PointLight(0x14b8a6, 1.8, 360);
+  rimLight.position.set(-120, -40, 160);
+  scene.add(rimLight);
+
+  const nodePositions = buildSchemaNodePositions(graph.nodes);
+  const nodeMeshes = [];
+  const nodeById = new Map();
+  const labels = [];
+
+  graph.edges.forEach((edge) => {
+    const source = nodePositions.get(edge.source);
+    const target = nodePositions.get(edge.target);
+    if (!source || !target) {
+      return;
+    }
+    const geometry = new THREE.BufferGeometry().setFromPoints([source, target]);
+    const material = new THREE.LineBasicMaterial({ color: 0x8ab8c0, transparent: true, opacity: 0.52 });
+    const line = new THREE.Line(geometry, material);
+    group.add(line);
+  });
+
+  graph.nodes.forEach((node) => {
+    const position = nodePositions.get(node.id);
+    const radius = node.kind === "fact" ? 14 : node.kind === "bridge" ? 12 : 10;
+    const geometry = new THREE.SphereGeometry(radius, 32, 24);
+    const material = new THREE.MeshStandardMaterial({
+      color: schemaNodeColor(node.kind),
+      emissive: schemaNodeColor(node.kind),
+      emissiveIntensity: 0.1,
+      metalness: 0.18,
+      roughness: 0.42,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    mesh.userData = { node };
+    group.add(mesh);
+    nodeMeshes.push(mesh);
+    nodeById.set(node.id, mesh);
+
+    const label = document.createElement("div");
+    label.className = "schema-graph-label";
+    label.textContent = node.label;
+    container.appendChild(label);
+    labels.push({ element: label, mesh });
+  });
+
+  const graphState = {
+    scene,
+    camera,
+    renderer,
+    group,
+    nodeMeshes,
+    nodeById,
+    labels,
+    raycaster: new THREE.Raycaster(),
+    pointer: new THREE.Vector2(),
+    selectedMesh: null,
+    hoveredMesh: null,
+    isDragging: false,
+    dragMoved: false,
+    lastX: 0,
+    lastY: 0,
+    animationId: 0,
+  };
+  state.schemaGraph = graphState;
+  bindSchemaGraphInteractions(graphState);
+  renderSchemaTableDetail(graph.nodes[0]);
+  selectSchemaGraphNode(graph.nodes[0].id);
+  animateSchemaGraph();
+}
+
+function buildSchemaNodePositions(nodes) {
+  const positions = new Map();
+  const radius = Math.max(86, nodes.length * 18);
+  nodes.forEach((node, index) => {
+    const angle = (index / nodes.length) * Math.PI * 2;
+    const layer = index % 2 === 0 ? 1 : -1;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius * 0.62;
+    const z = layer * (26 + (index % 3) * 18);
+    positions.set(node.id, new THREE.Vector3(x, y, z));
+  });
+  return positions;
+}
+
+function schemaNodeColor(kind) {
+  if (kind === "fact") {
+    return 0x0d9488;
+  }
+  if (kind === "bridge") {
+    return 0xb7791f;
+  }
+  return 0x2563eb;
+}
+
+function bindSchemaGraphInteractions(graph) {
+  const canvas = graph.renderer.domElement;
+  canvas.addEventListener("pointerdown", (event) => {
+    graph.isDragging = true;
+    graph.dragMoved = false;
+    graph.lastX = event.clientX;
+    graph.lastY = event.clientY;
+    canvas.setPointerCapture?.(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    updateSchemaGraphPointer(event, graph);
+    if (graph.isDragging) {
+      const dx = event.clientX - graph.lastX;
+      const dy = event.clientY - graph.lastY;
+      graph.group.rotation.y += dx * 0.006;
+      graph.group.rotation.x += dy * 0.004;
+      graph.group.rotation.x = Math.max(-0.9, Math.min(0.9, graph.group.rotation.x));
+      graph.dragMoved = graph.dragMoved || Math.abs(dx) + Math.abs(dy) > 3;
+      graph.lastX = event.clientX;
+      graph.lastY = event.clientY;
+      return;
+    }
+    updateSchemaGraphHover(graph);
+  });
+  canvas.addEventListener("pointerup", (event) => {
+    graph.isDragging = false;
+    canvas.releasePointerCapture?.(event.pointerId);
+    if (!graph.dragMoved) {
+      updateSchemaGraphPointer(event, graph);
+      const mesh = pickSchemaGraphNode(graph);
+      if (mesh) {
+        renderSchemaTableDetail(mesh.userData.node);
+        selectSchemaGraphNode(mesh.userData.node.id);
+      }
+    }
+  });
+  canvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    graph.camera.position.z = Math.max(150, Math.min(520, graph.camera.position.z + event.deltaY * 0.25));
+  }, { passive: false });
+}
+
+function updateSchemaGraphPointer(event, graph) {
+  const rect = graph.renderer.domElement.getBoundingClientRect();
+  graph.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  graph.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function pickSchemaGraphNode(graph) {
+  graph.raycaster.setFromCamera(graph.pointer, graph.camera);
+  return graph.raycaster.intersectObjects(graph.nodeMeshes, false)[0]?.object || null;
+}
+
+function updateSchemaGraphHover(graph) {
+  const mesh = pickSchemaGraphNode(graph);
+  if (graph.hoveredMesh && graph.hoveredMesh !== graph.selectedMesh) {
+    graph.hoveredMesh.scale.setScalar(1);
+  }
+  graph.hoveredMesh = mesh;
+  if (mesh && mesh !== graph.selectedMesh) {
+    mesh.scale.setScalar(1.12);
+  }
+  graph.renderer.domElement.style.cursor = mesh ? "pointer" : "grab";
+}
+
+function selectSchemaGraphNode(nodeId) {
+  const graph = state.schemaGraph;
+  if (!graph) {
+    return;
+  }
+  if (graph.selectedMesh) {
+    graph.selectedMesh.scale.setScalar(1);
+  }
+  const mesh = graph.nodeById.get(nodeId);
+  if (!mesh) {
+    return;
+  }
+  graph.selectedMesh = mesh;
+  mesh.scale.setScalar(1.26);
+}
+
+function animateSchemaGraph() {
+  const graph = state.schemaGraph;
+  if (!graph) {
+    return;
+  }
+  if (!graph.isDragging) {
+    graph.group.rotation.y += 0.0016;
+  }
+  updateSchemaGraphLabels(graph);
+  graph.renderer.render(graph.scene, graph.camera);
+  graph.animationId = requestAnimationFrame(animateSchemaGraph);
+}
+
+function updateSchemaGraphLabels(graph) {
+  const width = graph.renderer.domElement.clientWidth;
+  const height = graph.renderer.domElement.clientHeight;
+  graph.labels.forEach(({ element, mesh }) => {
+    const vector = mesh.position.clone();
+    mesh.parent.localToWorld(vector);
+    vector.project(graph.camera);
+    const visible = vector.z < 1;
+    element.classList.toggle("visible", visible);
+    if (!visible) {
+      return;
+    }
+    element.style.transform = `translate(${(vector.x * 0.5 + 0.5) * width}px, ${(-vector.y * 0.5 + 0.5) * height}px) translate(-50%, -50%)`;
+  });
+}
+
+function resizeSchemaGraph() {
+  const graph = state.schemaGraph;
+  if (!graph || !el.schemaGraphCanvas) {
+    return;
+  }
+  const width = Math.max(el.schemaGraphCanvas.clientWidth, 260);
+  const height = Math.max(el.schemaGraphCanvas.clientHeight, 480);
+  graph.camera.aspect = width / height;
+  graph.camera.updateProjectionMatrix();
+  graph.renderer.setSize(width, height);
+}
+
+function resetSchemaGraphCamera() {
+  const graph = state.schemaGraph;
+  if (!graph) {
+    return;
+  }
+  graph.camera.position.set(0, 26, 285);
+  graph.group.rotation.set(0, 0, 0);
+}
+
+function renderSchemaDetailEmpty() {
+  if (!el.schemaDetailBody) {
+    return;
+  }
+  el.schemaDetailBody.innerHTML = `
+    <div class="schema-detail-empty">
+      <svg><use href="#icon-table"></use></svg>
+      <strong>选择一张表</strong>
+      <span>点击左侧 3D 图谱中的节点，这里会展示表名、主键、核心字段和关联关系。</span>
+    </div>
+  `;
+}
+
+function renderSchemaTableDetail(node) {
+  if (!el.schemaDetailBody || !node) {
+    return;
+  }
+  const primaryKeys = node.primary_keys?.length ? node.primary_keys : ["未声明主键"];
+  const outgoingRelations = node.foreign_keys?.filter((item) => item.referred_table) || [];
+  const incomingRelations = node.incoming_relations || [];
+  el.schemaDetailBody.innerHTML = `
+    <div class="schema-table-title">
+      <div class="table-icon"><svg><use href="#icon-table"></use></svg></div>
+      <div>
+        <strong title="${escapeHtml(node.label)}">${escapeHtml(node.label)}</strong>
+        <span>${escapeHtml(schemaKindLabel(node.kind))}</span>
+      </div>
+    </div>
+    <div class="schema-meta-box">
+      <div class="schema-meta-row"><span>字段数量</span><strong>${escapeHtml(node.column_count || 0)} 个</strong></div>
+      <div class="schema-meta-row"><span>入向关系</span><strong>${escapeHtml(node.incoming_count || 0)} 条</strong></div>
+      <div class="schema-meta-row"><span>出向关系</span><strong>${escapeHtml(node.outgoing_count || 0)} 条</strong></div>
+    </div>
+    <section class="schema-detail-section">
+      <h3>主键字段</h3>
+      <div class="schema-key-list">
+        ${primaryKeys.map((key) => `<div class="schema-key-item">${escapeHtml(key)}</div>`).join("")}
+      </div>
+    </section>
+    <section class="schema-detail-section">
+      <h3>核心关键字段</h3>
+      <div class="format-pills">
+        ${(node.core_fields || []).map((field) => `<span>${escapeHtml(field)}</span>`).join("") || "<span>暂无</span>"}
+      </div>
+    </section>
+    <section class="schema-detail-section">
+      <h3>字段列表</h3>
+      <table class="schema-field-table">
+        <thead>
+          <tr>
+            <th>字段名</th>
+            <th>类型</th>
+            <th>标记</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(node.columns || []).map(renderSchemaFieldRow).join("")}
+        </tbody>
+      </table>
+    </section>
+    <section class="schema-detail-section">
+      <h3>关联关系</h3>
+      <div class="schema-relation-list">
+        ${
+          outgoingRelations.length || incomingRelations.length
+            ? [
+                ...outgoingRelations.map(renderSchemaOutgoingRelationItem),
+                ...incomingRelations.map(renderSchemaIncomingRelationItem),
+              ].join("")
+            : '<div class="schema-relation-item"><strong>暂无外键关系</strong><span>独立表</span></div>'
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderSchemaFieldRow(column) {
+  const flags = [];
+  if (column.primary_key) {
+    flags.push("PK");
+  }
+  if (!column.nullable) {
+    flags.push("NOT NULL");
+  }
+  return `
+    <tr>
+      <td class="schema-field-name">${escapeHtml(column.name)}</td>
+      <td>${escapeHtml(column.type)}</td>
+      <td>${flags.map((flag) => `<span class="schema-field-badge">${escapeHtml(flag)}</span>`).join(" ") || "-"}</td>
+    </tr>
+  `;
+}
+
+function renderSchemaOutgoingRelationItem(relation) {
+  const columns = relation.columns?.join(", ") || "-";
+  const referredColumns = relation.referred_columns?.join(", ") || "-";
+  return `
+    <div class="schema-relation-item">
+      <strong>${escapeHtml(relation.referred_table)}</strong>
+      <span>引用 ${escapeHtml(columns)} -> ${escapeHtml(referredColumns)}</span>
+    </div>
+  `;
+}
+
+function renderSchemaIncomingRelationItem(relation) {
+  const columns = relation.columns?.join(", ") || "-";
+  const referredColumns = relation.referred_columns?.join(", ") || "-";
+  return `
+    <div class="schema-relation-item">
+      <strong>${escapeHtml(relation.source_table)}</strong>
+      <span>被引用 ${escapeHtml(columns)} -> ${escapeHtml(referredColumns)}</span>
+    </div>
+  `;
+}
+
+function schemaKindLabel(kind) {
+  const labels = {
+    fact: "事实表",
+    dimension: "维度表",
+    bridge: "关联表",
+  };
+  return labels[kind] || "数据表";
 }
 
 async function runAnalysis() {
@@ -1196,6 +1652,10 @@ function switchView(viewId) {
   }
   if (viewId === "schemaView") {
     loadManagedFiles("schema");
+    if (state.schemaTab === "graph") {
+      loadSchemaGraph();
+      setTimeout(resizeSchemaGraph, 0);
+    }
   }
   if (viewId === "ragView") {
     loadManagedFiles("rag");
@@ -2705,6 +3165,15 @@ function bindEvents() {
   });
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));
+  el.schemaTabs.forEach((button) => {
+    button.addEventListener("click", () => switchSchemaTab(button.dataset.schemaTab));
+  });
+  el.schemaGraphRefreshButton?.addEventListener("click", () => {
+    state.schemaGraphLoaded = false;
+    loadSchemaGraph(true);
+  });
+  el.schemaGraphResetButton?.addEventListener("click", resetSchemaGraphCamera);
+  el.schemaDetailCloseButton?.addEventListener("click", renderSchemaDetailEmpty);
   el.evaluationDatasetSelect?.addEventListener("change", () => {
     selectEvaluationDataset(el.evaluationDatasetSelect.value);
   });
@@ -2812,6 +3281,7 @@ function bindEvents() {
     if (state.evaluationTrendChart) {
       state.evaluationTrendChart.resize();
     }
+    resizeSchemaGraph();
   });
   document.addEventListener("click", (event) => {
     if (!el.evaluationDatasetPicker?.contains(event.target)) {
