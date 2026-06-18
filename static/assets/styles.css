@@ -3272,7 +3272,11 @@ td {
 }
 
 /* Final overrides for V3.10.3 conversational analysis polish. */
-#analysisView { padding: 0; }
+#analysisView {
+  --analysis-column-width: 900px;
+  --analysis-column-gutter: clamp(20px, 4vw, 48px);
+  padding: 0;
+}
 #analysisView .chat-workspace { background: #f8fafc; }
 #analysisView .chat-session-header {
   background: rgba(255, 255, 255, 0.86);
@@ -3290,7 +3294,10 @@ td {
 #analysisView .chat-context { color: #8a97a6; }
 #analysisView .chat-thread {
   gap: 22px;
-  padding: 22px clamp(24px, 7vw, 112px);
+  margin: 0 auto;
+  max-width: var(--analysis-column-width);
+  padding: 22px 0;
+  width: calc(100% - (var(--analysis-column-gutter) * 2));
 }
 #analysisView .chat-message { max-width: 790px; }
 #analysisView .welcome-message {
@@ -3575,14 +3582,14 @@ td {
 }
 #analysisView .chat-composer-wrap {
   background: rgba(255, 255, 255, 0.92);
-  padding: 16px clamp(24px, 7vw, 112px) 14px;
+  padding: 16px var(--analysis-column-gutter) 14px;
 }
 #analysisView .chat-composer {
   border-color: #d7e2ea;
   border-radius: 18px;
   box-shadow: none;
   margin: 0 auto;
-  max-width: 900px;
+  max-width: var(--analysis-column-width);
   min-height: 58px;
 }
 #analysisView .chat-composer:focus-within {
@@ -3593,7 +3600,7 @@ td {
 #analysisView .composer-hint {
   margin-left: auto;
   margin-right: auto;
-  max-width: 900px;
+  max-width: var(--analysis-column-width);
 }
 
 /* V3.10.4: 用户消息和结果详情按聊天产品形态继续收敛。 */
