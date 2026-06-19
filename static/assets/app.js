@@ -18,6 +18,8 @@ const state = {
   conversations: [],
   activeConversationId: null,
   conversationSerial: 0,
+  renamingConversationId: null,
+  pendingDeleteConversationId: null,
   files: {
     schema: [],
     rag: [],
@@ -1040,6 +1042,7 @@ function resetConversation(options = {}) {
     conversation.title = "新对话";
     conversation.subtitle = "等待数据问题";
     conversation.preview = "等待数据问题";
+    conversation.customTitle = false;
     conversation.turns = [];
     conversation.updatedAt = Date.now();
   }
@@ -1097,13 +1100,15 @@ function resetConversation(options = {}) {
 function updateConversationMeta(question) {
   const conversation = ensureActiveConversation();
   const title = makeConversationTitle(question);
-  el.chatTitle.textContent = title || "新对话";
   const condition = inferQuestionCondition(question);
   el.currentCondition.textContent = condition;
-  conversation.title = title || "新对话";
+  if (!conversation.customTitle) {
+    conversation.title = title || "新对话";
+  }
   conversation.subtitle = condition === "无" ? "示例 MySQL 库" : condition;
   conversation.preview = question;
   conversation.updatedAt = Date.now();
+  el.chatTitle.textContent = conversation.title;
   renderConversationList();
 }
 
@@ -1139,16 +1144,47 @@ function renderConversationList() {
   el.conversationList.innerHTML = state.conversations
     .map((conversation) => {
       const isActive = conversation.id === state.activeConversationId;
+      const isRenaming = conversation.id === state.renamingConversationId;
+      const isPendingDelete = conversation.id === state.pendingDeleteConversationId;
       const turnText = conversation.turns?.length ? `${conversation.turns.length} 轮问答` : conversation.subtitle;
+      if (isRenaming) {
+        return `
+          <div class="conversation-item conversation-item-shell ${isActive ? "active" : ""} is-renaming">
+            <input
+              class="conversation-rename-input"
+              data-conversation-id="${escapeHtml(conversation.id)}"
+              maxlength="32"
+              value="${escapeHtml(conversation.title)}"
+              aria-label="重命名对话"
+            />
+          </div>
+        `;
+      }
       return `
-        <button
-          class="conversation-item ${isActive ? "active" : ""}"
-          type="button"
+        <div
+          class="conversation-item conversation-item-shell ${isActive ? "active" : ""} ${isPendingDelete ? "is-delete-confirming" : ""}"
           data-conversation-id="${escapeHtml(conversation.id)}"
         >
-          <strong>${escapeHtml(conversation.title)}</strong>
-          <span>${escapeHtml(turnText || "等待数据问题")}</span>
-        </button>
+          <button class="conversation-main" type="button" data-conversation-select>
+            <strong>${escapeHtml(conversation.title)}</strong>
+            <span>${escapeHtml(turnText || "等待数据问题")}</span>
+          </button>
+          ${
+            isPendingDelete
+              ? `<div class="conversation-confirm-actions" aria-label="确认删除">
+                  <button class="conversation-confirm-button danger" type="button" data-conversation-action="confirm-delete">确认</button>
+                  <button class="conversation-confirm-button" type="button" data-conversation-action="cancel-delete">取消</button>
+                </div>`
+              : `<div class="conversation-actions" aria-label="会话操作">
+                  <button class="conversation-action-button" type="button" data-conversation-action="rename" title="重命名">
+                    <svg><use href="#icon-edit"></use></svg>
+                  </button>
+                  <button class="conversation-action-button danger" type="button" data-conversation-action="delete" title="删除">
+                    <svg><use href="#icon-trash"></use></svg>
+                  </button>
+                </div>`
+          }
+        </div>
       `;
     })
     .join("");
@@ -3223,6 +3259,7 @@ function createConversation({ activate = true } = {}) {
     title: "新对话",
     subtitle: "等待数据问题",
     preview: "等待数据问题",
+    customTitle: false,
     updatedAt: Date.now(),
     turns: [],
   };
@@ -3269,6 +3306,81 @@ function switchConversation(conversationId) {
   renderConversationTurns(conversation);
   renderConversationList();
   switchView("analysisView");
+}
+
+function requestConversationRename(conversationId) {
+  const conversation = state.conversations.find((item) => item.id === conversationId);
+  if (!conversation) {
+    return;
+  }
+  state.renamingConversationId = conversation.id;
+  state.pendingDeleteConversationId = null;
+  renderConversationList();
+  requestAnimationFrame(() => {
+    const input = el.conversationList?.querySelector(
+      `.conversation-rename-input[data-conversation-id="${CSS.escape(conversation.id)}"]`,
+    );
+    input?.focus();
+    input?.select();
+  });
+}
+
+function commitConversationRename(input) {
+  if (state.renamingConversationId !== input.dataset.conversationId) {
+    return;
+  }
+  const conversation = state.conversations.find((item) => item.id === input.dataset.conversationId);
+  if (!conversation) {
+    return;
+  }
+  const nextTitle = input.value.trim();
+  conversation.title = nextTitle || "新对话";
+  conversation.customTitle = Boolean(nextTitle);
+  conversation.updatedAt = Date.now();
+  state.renamingConversationId = null;
+  if (conversation.id === state.activeConversationId) {
+    el.chatTitle.textContent = conversation.title;
+  }
+  renderConversationList();
+}
+
+function cancelConversationRename() {
+  state.renamingConversationId = null;
+  renderConversationList();
+}
+
+function requestConversationDelete(conversationId) {
+  const conversation = state.conversations.find((item) => item.id === conversationId);
+  if (!conversation) {
+    return;
+  }
+  state.renamingConversationId = null;
+  state.pendingDeleteConversationId = conversation.id;
+  renderConversationList();
+}
+
+function cancelConversationDelete() {
+  state.pendingDeleteConversationId = null;
+  renderConversationList();
+}
+
+function confirmConversationDelete(conversationId) {
+  const conversation = state.conversations.find((item) => item.id === conversationId);
+  if (!conversation) {
+    return;
+  }
+  const wasActive = conversation.id === state.activeConversationId;
+  state.conversations = state.conversations.filter((item) => item.id !== conversation.id);
+  state.pendingDeleteConversationId = null;
+  if (!state.conversations.length) {
+    createConversation();
+  }
+  if (wasActive) {
+    state.activeConversationId = state.conversations[0].id;
+    resetConversation({ preserveConversation: true });
+    renderConversationTurns(getActiveConversation());
+  }
+  renderConversationList();
 }
 
 function bindEvents() {
@@ -3397,11 +3509,53 @@ function bindEvents() {
     runAnalysis();
   });
   el.conversationList?.addEventListener("click", (event) => {
-    const button = event.target.closest(".conversation-item[data-conversation-id]");
-    if (!button || el.runButton.disabled) {
+    const actionButton = event.target.closest("[data-conversation-action]");
+    if (actionButton) {
+      const shell = actionButton.closest(".conversation-item[data-conversation-id]");
+      const conversationId = shell?.dataset.conversationId;
+      if (!conversationId || el.runButton.disabled) {
+        return;
+      }
+      if (actionButton.dataset.conversationAction === "rename") {
+        requestConversationRename(conversationId);
+      }
+      if (actionButton.dataset.conversationAction === "delete") {
+        requestConversationDelete(conversationId);
+      }
+      if (actionButton.dataset.conversationAction === "confirm-delete") {
+        confirmConversationDelete(conversationId);
+      }
+      if (actionButton.dataset.conversationAction === "cancel-delete") {
+        cancelConversationDelete();
+      }
       return;
     }
-    switchConversation(button.dataset.conversationId);
+    const selectButton = event.target.closest("[data-conversation-select]");
+    const shell = selectButton?.closest(".conversation-item[data-conversation-id]");
+    if (!shell || el.runButton.disabled) {
+      return;
+    }
+    switchConversation(shell.dataset.conversationId);
+  });
+  el.conversationList?.addEventListener("keydown", (event) => {
+    const input = event.target.closest(".conversation-rename-input");
+    if (!input) {
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitConversationRename(input);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelConversationRename();
+    }
+  });
+  el.conversationList?.addEventListener("focusout", (event) => {
+    const input = event.target.closest(".conversation-rename-input");
+    if (input) {
+      commitConversationRename(input);
+    }
   });
 
   for (const category of Object.keys(fileManagers)) {

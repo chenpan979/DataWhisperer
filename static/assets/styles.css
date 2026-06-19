@@ -230,9 +230,10 @@ svg {
   border: 1px solid transparent;
   border-radius: 8px;
   color: #50605a;
-  display: grid;
-  gap: 3px;
-  padding: 10px 11px;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 9px;
   text-align: left;
 }
 
@@ -245,7 +246,18 @@ svg {
   border-color: #c8ece2;
 }
 
-.conversation-item strong {
+.conversation-main {
+  background: transparent;
+  border: 0;
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.conversation-main strong {
   color: #17201c;
   font-size: 13px;
   overflow: hidden;
@@ -253,12 +265,120 @@ svg {
   white-space: nowrap;
 }
 
-.conversation-item span {
+.conversation-main span {
   color: #7a8882;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.conversation-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.conversation-item:hover .conversation-actions,
+.conversation-item.active .conversation-actions,
+.conversation-actions:focus-within {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.conversation-action-button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d7e5e1;
+  border-radius: 7px;
+  color: #63736d;
+  display: inline-flex;
+  height: 26px;
+  justify-content: center;
+  padding: 0;
+  width: 26px;
+}
+
+.conversation-action-button:hover {
+  border-color: #9dd8ca;
+  color: var(--accent);
+}
+
+.conversation-action-button.danger:hover {
+  background: #fff5f5;
+  border-color: #f3b4b4;
+  color: #dc2626;
+}
+
+.conversation-action-button svg {
+  height: 14px;
+  width: 14px;
+}
+
+.conversation-item.is-delete-confirming {
+  background: #fffafa;
+  border-color: #f3caca;
+}
+
+.conversation-confirm-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.conversation-confirm-button {
+  background: #ffffff;
+  border: 1px solid #d7e5e1;
+  border-radius: 7px;
+  color: #63736d;
+  font-size: 12px;
+  font-weight: 750;
+  height: 26px;
+  line-height: 1;
+  padding: 0 7px;
+}
+
+.conversation-confirm-button:hover {
+  border-color: #9dd8ca;
+  color: var(--accent);
+}
+
+.conversation-confirm-button.danger {
+  background: #fff5f5;
+  border-color: #f3b4b4;
+  color: #dc2626;
+}
+
+.conversation-confirm-button.danger:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+}
+
+.conversation-item.is-renaming {
+  padding: 7px;
+}
+
+.conversation-rename-input {
+  background: #ffffff;
+  border: 1px solid #9dd8ca;
+  border-radius: 7px;
+  color: #10201c;
+  font-size: 13px;
+  font-weight: 750;
+  height: 34px;
+  min-width: 0;
+  outline: 0;
+  padding: 0 9px;
+  width: 100%;
+}
+
+.conversation-rename-input:focus {
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
 }
 
 .conversation-history-turn .result-bubble {
