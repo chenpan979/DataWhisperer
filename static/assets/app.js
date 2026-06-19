@@ -970,8 +970,9 @@ function cloneAsHistoryNode(source) {
 function saveConversationTurn(data) {
   const conversation = ensureActiveConversation();
   const exists = conversation.turns.some((turn) => turn.traceId === data.trace_id);
+  let nextTurn = null;
   if (!exists) {
-    conversation.turns.push({
+    nextTurn = {
       traceId: data.trace_id || `turn-${Date.now()}`,
       question: data.question,
       insight: data.insight || "暂无分析结论。",
@@ -979,11 +980,17 @@ function saveConversationTurn(data) {
       columnCount: data.columns?.length || 0,
       chartType: chartTypeLabels[data.chart?.type] || data.chart?.type || "-",
       createdAt: currentMessageTime(),
-    });
+    };
+    conversation.turns.push(nextTurn);
   }
   conversation.preview = data.insight || data.question || "已完成分析";
   conversation.updatedAt = Date.now();
   renderConversationList();
+  if (nextTurn) {
+    persistConversationTurn(conversation, nextTurn);
+  } else {
+    persistConversationMeta(conversation);
+  }
 }
 
 function renderConversationTurns(conversation) {
@@ -1045,6 +1052,7 @@ function resetConversation(options = {}) {
     conversation.customTitle = false;
     conversation.turns = [];
     conversation.updatedAt = Date.now();
+    persistConversationMeta(conversation);
   }
   clearTypewriter();
   stopPendingProcess();
@@ -1110,6 +1118,7 @@ function updateConversationMeta(question) {
   conversation.updatedAt = Date.now();
   el.chatTitle.textContent = conversation.title;
   renderConversationList();
+  persistConversationMeta(conversation);
 }
 
 function inferQuestionCondition(question) {
@@ -3253,21 +3262,123 @@ function currentMessageTime() {
   });
 }
 
-function createConversation({ activate = true } = {}) {
-  const conversation = {
-    id: `conversation-${Date.now()}-${++state.conversationSerial}`,
-    title: "新对话",
-    subtitle: "等待数据问题",
-    preview: "等待数据问题",
-    customTitle: false,
-    updatedAt: Date.now(),
-    turns: [],
-  };
+function createConversation({ activate = true, data = null } = {}) {
+  const conversation = normalizeConversation(
+    data || {
+      id: `conversation-${Date.now()}-${++state.conversationSerial}`,
+      title: "新对话",
+      subtitle: "等待数据问题",
+      preview: "等待数据问题",
+      customTitle: false,
+      updatedAt: Date.now(),
+      turns: [],
+    },
+  );
   state.conversations.unshift(conversation);
   if (activate) {
     state.activeConversationId = conversation.id;
   }
   return conversation;
+}
+
+function normalizeConversation(conversation) {
+  return {
+    id: conversation.id,
+    title: conversation.title || "新对话",
+    subtitle: conversation.subtitle || "等待数据问题",
+    preview: conversation.preview || "等待数据问题",
+    customTitle: Boolean(conversation.customTitle),
+    updatedAt: Number(conversation.updatedAt || Date.now()),
+    turns: Array.isArray(conversation.turns) ? conversation.turns : [],
+  };
+}
+
+function replaceConversation(nextConversation) {
+  const normalized = normalizeConversation(nextConversation);
+  const index = state.conversations.findIndex((item) => item.id === normalized.id);
+  if (index >= 0) {
+    state.conversations[index] = normalized;
+  } else {
+    state.conversations.unshift(normalized);
+  }
+  return normalized;
+}
+
+async function loadConversations() {
+  try {
+    const data = await fetchJson("/api/chat/conversations");
+    state.conversations = (data.conversations || []).map(normalizeConversation);
+    state.activeConversationId = data.activeConversationId || state.conversations[0]?.id || null;
+    if (!state.conversations.length) {
+      await startNewConversation({ silent: true });
+      return;
+    }
+    resetConversation({ preserveConversation: true });
+    renderConversationTurns(getActiveConversation());
+    renderConversationList();
+  } catch (error) {
+    console.warn("Load conversations failed.", error);
+    if (!state.conversations.length) {
+      createConversation();
+      resetConversation({ preserveConversation: true });
+    }
+  }
+}
+
+async function createConversationOnServer() {
+  return fetchJson("/api/chat/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: "新对话",
+      subtitle: "等待数据问题",
+      preview: "等待数据问题",
+    }),
+  });
+}
+
+async function persistConversationMeta(conversation) {
+  try {
+    const updated = await fetchJson(`/api/chat/conversations/${encodeURIComponent(conversation.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: conversation.title,
+        subtitle: conversation.subtitle,
+        preview: conversation.preview,
+        customTitle: conversation.customTitle,
+        turns: conversation.turns,
+      }),
+    });
+    replaceConversation(updated);
+    renderConversationList();
+  } catch (error) {
+    console.warn("Persist conversation failed.", error);
+  }
+}
+
+async function persistConversationTurn(conversation, turn) {
+  try {
+    const updated = await fetchJson(`/api/chat/conversations/${encodeURIComponent(conversation.id)}/turns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(turn),
+    });
+    replaceConversation(updated);
+    renderConversationList();
+  } catch (error) {
+    console.warn("Persist conversation turn failed.", error);
+  }
+}
+
+async function deleteConversationOnServer(conversationId) {
+  try {
+    await fetchJson(`/api/chat/conversations/${encodeURIComponent(conversationId)}`, {
+      method: "DELETE",
+    });
+  } catch (error) {
+    console.warn("Delete conversation failed.", error);
+  }
 }
 
 function getActiveConversation() {
@@ -3287,10 +3398,20 @@ function makeConversationTitle(question) {
   return normalized.length > 18 ? `${normalized.slice(0, 18)}...` : normalized || "新对话";
 }
 
-function startNewConversation() {
-  createConversation();
+async function startNewConversation(options = {}) {
+  let conversation;
+  try {
+    const data = await createConversationOnServer();
+    conversation = createConversation({ data });
+  } catch (error) {
+    console.warn("Create conversation failed.", error);
+    conversation = createConversation();
+  }
+  state.activeConversationId = conversation.id;
   resetConversation({ preserveConversation: true });
-  switchView("analysisView");
+  if (!options.silent) {
+    switchView("analysisView");
+  }
 }
 
 function switchConversation(conversationId) {
@@ -3342,6 +3463,7 @@ function commitConversationRename(input) {
     el.chatTitle.textContent = conversation.title;
   }
   renderConversationList();
+  persistConversationMeta(conversation);
 }
 
 function cancelConversationRename() {
@@ -3372,8 +3494,10 @@ function confirmConversationDelete(conversationId) {
   const wasActive = conversation.id === state.activeConversationId;
   state.conversations = state.conversations.filter((item) => item.id !== conversation.id);
   state.pendingDeleteConversationId = null;
+  deleteConversationOnServer(conversation.id);
   if (!state.conversations.length) {
-    createConversation();
+    startNewConversation({ silent: true });
+    return;
   }
   if (wasActive) {
     state.activeConversationId = state.conversations[0].id;
@@ -3392,6 +3516,7 @@ function bindEvents() {
     conversation.subtitle = "上下文已重置";
     conversation.updatedAt = Date.now();
     renderConversationList();
+    persistConversationMeta(conversation);
   });
   el.runButton.addEventListener("click", runAnalysis);
   el.questionInput.addEventListener("input", () => {
@@ -3603,7 +3728,7 @@ function bindEvents() {
 bindEvents();
 hydrateConversationalCopy();
 setSqlContent(state.currentSql);
-renderConversationList();
+loadConversations();
 checkHealth();
 loadExamples();
 renderProcessTimeline([]);
