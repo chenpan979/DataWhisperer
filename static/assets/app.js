@@ -20,6 +20,9 @@ const state = {
   conversationSerial: 0,
   renamingConversationId: null,
   pendingDeleteConversationId: null,
+  historyChartOptions: new Map(),
+  historyChartInstances: [],
+  historyChartRetryCount: 0,
   files: {
     schema: [],
     rag: [],
@@ -1002,11 +1005,15 @@ function saveConversationTurn(data) {
 }
 
 function renderConversationTurns(conversation) {
+  disposeHistoryCharts();
+  state.historyChartOptions.clear();
+  state.historyChartRetryCount = 0;
   el.chatThread.querySelectorAll(".archived-turn").forEach((node) => node.remove());
   (conversation.turns || []).forEach((turn) => {
     el.chatThread.insertBefore(createHistoryUserNode(turn), el.userMessage);
     el.chatThread.insertBefore(createHistoryAssistantNode(turn), el.userMessage);
   });
+  renderHistoryCharts();
   if (conversation.turns?.length) {
     scrollChatToBottom();
   }
@@ -1071,7 +1078,7 @@ function renderCompactHistorySnapshot(turn) {
 function renderFullHistorySnapshot(turn) {
   const columns = Array.isArray(turn.columns) ? turn.columns : [];
   const rows = Array.isArray(turn.rows) ? turn.rows : [];
-  const warnings = Array.isArray(turn.warnings) ? turn.warnings : [];
+  const warnings = filterHistoryWarnings(Array.isArray(turn.warnings) ? turn.warnings : []);
   const followups = Array.isArray(turn.followups) ? turn.followups : [];
   const traceSteps = Array.isArray(turn.traceSteps) ? turn.traceSteps : [];
   const sql = turn.generatedSql || "";
@@ -1105,91 +1112,162 @@ function renderHistoryWarnings(warnings) {
   `;
 }
 
+function filterHistoryWarnings(warnings) {
+  return warnings.filter((warning) => {
+    const text = String(warning || "");
+    return !/本地演示|demo fallback|fallback SQL|演示规则/i.test(text);
+  });
+}
+
 function renderHistoryChart(chartOption = {}, rows = [], columns = []) {
   if (!rows.length || chartOption.type === "empty") {
     return "";
   }
 
   const title = chartOption.title?.text || "历史图表";
-  const series = chartOption.series?.[0] || {};
-  const labels = chartOption.xAxis?.data || series.data?.map((item) => item.name) || rows.map((row) => row[columns[0]]);
-  const values = (series.data || rows.map((row) => row[columns[1]])).map((item) =>
-    typeof item === "object" && item !== null ? item.value : item,
-  );
-  const numericValues = values.map((value) => Number(value || 0));
-  const maxValue = Math.max(...numericValues, 1);
-
-  if (chartOption.type === "line") {
-    return renderHistoryLineChart(title, labels, numericValues, maxValue);
-  }
-  return renderHistoryBarChart(title, labels, numericValues, maxValue);
-}
-
-function renderHistoryBarChart(title, labels, values, maxValue) {
-  const width = 720;
-  const height = 260;
-  const plotX = 54;
-  const plotY = 34;
-  const plotWidth = 620;
-  const plotHeight = 160;
-  const barGap = 18;
-  const barWidth = Math.max(24, (plotWidth - barGap * Math.max(labels.length - 1, 0)) / Math.max(labels.length, 1));
-  const bars = labels
-    .map((label, index) => {
-      const value = values[index] || 0;
-      const barHeight = Math.max(2, (value / maxValue) * plotHeight);
-      const x = plotX + index * (barWidth + barGap);
-      const y = plotY + plotHeight - barHeight;
-      return `
-        <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="6"></rect>
-        <text x="${x + barWidth / 2}" y="${plotY + plotHeight + 24}" text-anchor="middle">${escapeHtml(shortLabel(label))}</text>
-      `;
-    })
-    .join("");
+  const chartId = `history-chart-${Math.random().toString(36).slice(2)}`;
+  state.historyChartOptions.set(chartId, chartOption);
+  const encodedOption = encodeURIComponent(JSON.stringify(chartOption));
+  const inlineFallback = window.echarts ? "" : buildHistoryFallbackSvg(chartOption);
+  const renderedAttr = inlineFallback ? ' data-rendered="true"' : "";
 
   return `
     <figure class="history-chart-card">
       <figcaption>${escapeHtml(title)}</figcaption>
-      <svg class="history-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
-        <line x1="${plotX}" y1="${plotY + plotHeight}" x2="${plotX + plotWidth}" y2="${plotY + plotHeight}"></line>
-        ${bars}
-      </svg>
+      <div
+        class="history-echart"
+        data-history-chart-id="${escapeHtml(chartId)}"
+        data-history-chart-option="${escapeHtml(encodedOption)}"
+        ${renderedAttr}
+      >${inlineFallback}</div>
     </figure>
   `;
 }
 
-function renderHistoryLineChart(title, labels, values, maxValue) {
-  const width = 720;
-  const height = 260;
-  const plotX = 54;
-  const plotY = 34;
-  const plotWidth = 620;
-  const plotHeight = 160;
-  const points = values.map((value, index) => {
-    const x = plotX + (plotWidth / Math.max(values.length - 1, 1)) * index;
-    const y = plotY + plotHeight - (value / maxValue) * plotHeight;
-    return { x, y, value, label: labels[index] };
+function renderHistoryCharts() {
+  if (!window.echarts) {
+    if (state.historyChartRetryCount < 3) {
+      state.historyChartRetryCount += 1;
+      setTimeout(renderHistoryCharts, 300);
+      return;
+    }
+    renderHistoryFallbackCharts();
+    return;
+  }
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".history-echart").forEach((node) => {
+      const chartId = node.dataset.historyChartId;
+      const chartOption = state.historyChartOptions.get(chartId) || decodeHistoryChartOption(node);
+      if (!chartOption || node.dataset.rendered === "true") {
+        return;
+      }
+      const chart = window.echarts.init(node);
+      chart.setOption(enhanceChartOption(localizeChartOption(chartOption)), true);
+      state.historyChartInstances.push(chart);
+      node.dataset.rendered = "true";
+    });
   });
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const areaPath = `${path} L ${plotX + plotWidth} ${plotY + plotHeight} L ${plotX} ${plotY + plotHeight} Z`;
+}
 
-  return `
-    <figure class="history-chart-card">
-      <figcaption>${escapeHtml(title)}</figcaption>
-      <svg class="history-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
-        <path class="history-line-area" d="${areaPath}"></path>
-        <path class="history-line-path" d="${path}"></path>
+function renderHistoryFallbackCharts() {
+  document.querySelectorAll(".history-echart").forEach((node) => {
+    const chartId = node.dataset.historyChartId;
+    const chartOption = state.historyChartOptions.get(chartId) || decodeHistoryChartOption(node);
+    if (!chartOption || node.dataset.rendered === "true") {
+      return;
+    }
+    node.innerHTML = buildHistoryFallbackSvg(chartOption);
+    node.dataset.rendered = "true";
+  });
+}
+
+function decodeHistoryChartOption(node) {
+  try {
+    return JSON.parse(decodeURIComponent(node.dataset.historyChartOption || ""));
+  } catch (error) {
+    console.warn("Decode history chart option failed.", error);
+    return null;
+  }
+}
+
+function buildHistoryFallbackSvg(chartOption = {}) {
+  const series = chartOption.series?.[0] || {};
+  const rawData = Array.isArray(series.data) ? series.data : [];
+  const labels = chartOption.xAxis?.data || rawData.map((item) => item.name);
+  const values = rawData.map((item) => (typeof item === "object" && item !== null ? Number(item.value || 0) : Number(item || 0)));
+  const maxValue = Math.max(...values, 1);
+  const width = 720;
+  const height = 300;
+  const plotX = 58;
+  const plotY = 26;
+  const plotWidth = 610;
+  const plotHeight = 210;
+  const gridLines = [0, 0.25, 0.5, 0.75, 1]
+    .map((ratio) => {
+      const y = plotY + plotHeight * ratio;
+      return `<line class="history-fallback-grid" x1="${plotX}" y1="${y}" x2="${plotX + plotWidth}" y2="${y}"></line>`;
+    })
+    .join("");
+
+  if (chartOption.type === "line") {
+    const points = values.map((value, index) => {
+      const x = plotX + (plotWidth / Math.max(values.length - 1, 1)) * index;
+      const y = plotY + plotHeight - (value / maxValue) * plotHeight;
+      return { x, y, label: labels[index] };
+    });
+    const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+    const areaPath = `${linePath} L ${plotX + plotWidth} ${plotY + plotHeight} L ${plotX} ${plotY + plotHeight} Z`;
+    return `
+      <svg class="history-fallback-svg" viewBox="0 0 ${width} ${height}" role="img">
+        ${gridLines}
+        <path class="history-fallback-area" d="${areaPath}"></path>
+        <path class="history-fallback-line" d="${linePath}"></path>
         ${points
           .map(
             (point) => `
-              <circle cx="${point.x}" cy="${point.y}" r="4"></circle>
-              <text x="${point.x}" y="${plotY + plotHeight + 24}" text-anchor="middle">${escapeHtml(shortLabel(point.label))}</text>
+              <circle class="history-fallback-dot" cx="${point.x}" cy="${point.y}" r="4"></circle>
+              <text x="${point.x}" y="${plotY + plotHeight + 30}" text-anchor="middle">${escapeHtml(shortHistoryLabel(point.label))}</text>
             `,
           )
           .join("")}
       </svg>
-    </figure>
+    `;
+  }
+
+  const barGap = 18;
+  const barWidth = Math.max(26, (plotWidth - barGap * Math.max(values.length - 1, 0)) / Math.max(values.length, 1));
+  return `
+    <svg class="history-fallback-svg" viewBox="0 0 ${width} ${height}" role="img">
+      ${gridLines}
+      ${values
+        .map((value, index) => {
+          const barHeight = Math.max(4, (value / maxValue) * plotHeight);
+          const x = plotX + index * (barWidth + barGap);
+          const y = plotY + plotHeight - barHeight;
+          return `
+            <rect class="history-fallback-bar" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="6"></rect>
+            <text x="${x + barWidth / 2}" y="${plotY + plotHeight + 30}" text-anchor="middle">${escapeHtml(shortHistoryLabel(labels[index]))}</text>
+          `;
+        })
+        .join("")}
+    </svg>
   `;
+}
+
+function shortHistoryLabel(label) {
+  const text = String(label ?? "-");
+  return text.length > 12 ? `${text.slice(0, 12)}...` : text;
+}
+
+function disposeHistoryCharts() {
+  state.historyChartInstances.forEach((chart) => {
+    try {
+      chart.dispose();
+    } catch (error) {
+      console.warn("Dispose history chart failed.", error);
+    }
+  });
+  state.historyChartInstances = [];
 }
 
 function renderHistoryTableDetails(columns, rows) {
@@ -1255,11 +1333,6 @@ function renderHistoryFollowups(followups) {
   `;
 }
 
-function shortLabel(label) {
-  const text = String(label ?? "-");
-  return text.length > 12 ? `${text.slice(0, 12)}...` : text;
-}
-
 function resetConversation(options = {}) {
   const conversation = ensureActiveConversation();
   const preserveConversation = Boolean(options.preserveConversation);
@@ -1274,6 +1347,8 @@ function resetConversation(options = {}) {
   }
   clearTypewriter();
   stopPendingProcess();
+  disposeHistoryCharts();
+  state.historyChartOptions.clear();
   if (state.chart) {
     state.chart.dispose();
     state.chart = null;
@@ -3955,6 +4030,7 @@ function bindEvents() {
     if (state.evaluationTrendChart) {
       state.evaluationTrendChart.resize();
     }
+    state.historyChartInstances.forEach((chart) => chart.resize());
     resizeSchemaGraph();
   });
   document.addEventListener("click", (event) => {

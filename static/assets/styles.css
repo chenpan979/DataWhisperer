@@ -438,37 +438,34 @@ svg {
   margin-bottom: 8px;
 }
 
-.history-chart-svg {
-  display: block;
-  height: 260px;
+.history-echart {
+  height: 300px;
   width: 100%;
 }
 
-.history-chart-svg line {
-  stroke: #d8e4e8;
+.history-fallback-svg {
+  display: block;
+  height: 300px;
+  width: 100%;
+}
+
+.history-fallback-grid {
+  stroke: #e8eff2;
+  stroke-dasharray: 3 5;
   stroke-width: 1;
 }
 
-.history-chart-svg rect {
-  fill: #5873c8;
-}
-
-.history-chart-svg text {
-  fill: #64748b;
+.history-fallback-svg text {
+  fill: #708399;
   font-size: 12px;
+  font-weight: 500;
 }
 
-.history-chart-svg circle {
-  fill: #0f9f92;
-  stroke: #ffffff;
-  stroke-width: 3;
-}
-
-.history-line-area {
+.history-fallback-area {
   fill: rgba(20, 184, 166, 0.12);
 }
 
-.history-line-path {
+.history-fallback-line {
   fill: none;
   stroke: #0f9f92;
   stroke-linecap: round;
@@ -476,16 +473,33 @@ svg {
   stroke-width: 3;
 }
 
+.history-fallback-dot {
+  fill: #0f9f92;
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+.history-fallback-bar {
+  fill: #5873c8;
+}
+
 .history-detail-stack {
-  display: grid;
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .history-detail {
   background: #ffffff;
   border: 1px solid #dbe7e4;
-  border-radius: 8px;
+  border-radius: 999px;
   overflow: hidden;
+}
+
+.history-detail[open] {
+  border-radius: 8px;
+  flex-basis: 100%;
 }
 
 .history-detail summary {
@@ -495,7 +509,8 @@ svg {
   gap: 12px;
   justify-content: space-between;
   list-style: none;
-  padding: 12px 14px;
+  min-width: 116px;
+  padding: 9px 13px;
 }
 
 .history-detail summary::-webkit-details-marker {
