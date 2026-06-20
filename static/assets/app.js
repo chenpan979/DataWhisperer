@@ -961,6 +961,45 @@ function createChartSnapshot() {
   }
 }
 
+function createAssistantSnapshotHtml(data) {
+  const clone = el.assistantResultMessage.cloneNode(true);
+  const chartSnapshot = createChartSnapshot();
+  clone.hidden = false;
+  clone.removeAttribute("id");
+  clone.classList.add("archived-turn", "conversation-history-turn", "snapshot-history-turn");
+  clone.querySelectorAll(".analysis-thinking").forEach((node) => node.remove());
+
+  const insight = clone.querySelector("#insightText");
+  if (insight) {
+    insight.textContent = data.insight || insight.textContent;
+    insight.classList.remove("streaming");
+  }
+
+  const tablePanel = clone.querySelector("#tablePanel");
+  if (tablePanel) {
+    tablePanel.dataset.detailPanel = "table";
+  }
+  const sqlPanel = clone.querySelector("#sqlPanel");
+  if (sqlPanel) {
+    sqlPanel.dataset.detailPanel = "sql";
+  }
+
+  if (chartSnapshot) {
+    const chartHost = clone.querySelector("#chartHost");
+    if (chartHost) {
+      chartHost.classList.remove("empty-chart");
+      chartHost.innerHTML = `<img class="chart-history-image" src="${chartSnapshot}" alt="历史分析图表" />`;
+    }
+  }
+
+  clone.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
+  clone.querySelectorAll(".result-actions, .code-actions").forEach((node) => {
+    node.hidden = true;
+  });
+  clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+  return clone.outerHTML;
+}
+
 function cloneAsHistoryNode(source) {
   const clone = source.cloneNode(true);
   clone.hidden = false;
@@ -991,6 +1030,7 @@ function saveConversationTurn(data) {
       warnings: data.warnings || [],
       traceSteps: data.trace_steps || [],
       followups: generateFollowupQuestions(data),
+      assistantHtml: createAssistantSnapshotHtml(data),
     };
     conversation.turns.push(nextTurn);
   }
@@ -1035,6 +1075,10 @@ function createHistoryUserNode(turn) {
 }
 
 function createHistoryAssistantNode(turn) {
+  if (turn.assistantHtml) {
+    return createHistoryAssistantSnapshotNode(turn);
+  }
+
   const article = document.createElement("article");
   article.className = "chat-message assistant result-message archived-turn conversation-history-turn";
   const fullSnapshot = hasFullTurnSnapshot(turn);
@@ -1050,6 +1094,21 @@ function createHistoryAssistantNode(turn) {
       </div>
     </div>
   `;
+  return article;
+}
+
+function createHistoryAssistantSnapshotNode(turn) {
+  const template = document.createElement("template");
+  template.innerHTML = String(turn.assistantHtml || "").trim();
+  const article = template.content.firstElementChild;
+  if (!article) {
+    return createHistoryAssistantNode({ ...turn, assistantHtml: "" });
+  }
+
+  article.hidden = false;
+  article.classList.add("archived-turn", "conversation-history-turn", "snapshot-history-turn");
+  article.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
+  article.querySelectorAll(".analysis-thinking").forEach((node) => node.remove());
   return article;
 }
 
@@ -1331,6 +1390,26 @@ function renderHistoryFollowups(followups) {
       </div>
     </div>
   `;
+}
+
+function toggleHistoryResultDetail(button) {
+  const message = button.closest(".conversation-history-turn");
+  const targetName = button.dataset.detailTarget;
+  if (!message || !targetName) {
+    return;
+  }
+
+  const shouldOpen = button.getAttribute("aria-expanded") !== "true";
+  message.querySelectorAll(".detail-toggle").forEach((item) => {
+    const isTarget = item.dataset.detailTarget === targetName;
+    item.classList.toggle("active", isTarget && shouldOpen);
+    item.setAttribute("aria-expanded", String(isTarget && shouldOpen));
+  });
+
+  message.querySelectorAll(".detail-panel").forEach((panel) => {
+    const panelName = panel.dataset.detailPanel || panel.id?.replace("Panel", "");
+    panel.classList.toggle("active", panelName === targetName && shouldOpen);
+  });
 }
 
 function resetConversation(options = {}) {
@@ -3862,6 +3941,12 @@ function bindEvents() {
     el.questionInput.focus();
   });
   el.chatThread?.addEventListener("click", (event) => {
+    const detailButton = event.target.closest(".conversation-history-turn .detail-toggle");
+    if (detailButton) {
+      toggleHistoryResultDetail(detailButton);
+      return;
+    }
+
     const button = event.target.closest(".conversation-history-turn .followup-chip");
     if (!button) {
       return;

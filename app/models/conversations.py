@@ -6,16 +6,15 @@ from pydantic import BaseModel, Field
 class ConversationTurn(BaseModel):
     """一次问答轮次的持久化快照。
 
-    V3.11.4 只保存了摘要，所以切回历史会话时只能看到“行数、字段数、图表类型”。
-    V3.11.5 开始保存完整结果快照：结论、图表配置、表格数据、SQL、告警和追问建议。
-    这样用户刷新页面或重启后端后，仍然能看到接近原始回答的完整对话内容。
+    后端保存的不只是问题和结论，还包括 SQL、表格数据、图表配置和前端回答卡片 HTML。
+    这样用户刷新页面或重启后端后，可以恢复接近原始生成时的完整对话体验。
     """
 
     traceId: str = Field(description="本轮问答的唯一标识。")
     question: str = Field(description="用户提出的自然语言问题。")
     insight: str = Field(description="助手生成的业务分析结论。")
     rowCount: int = Field(default=0, description="本轮查询返回的行数。")
-    columnCount: int = Field(default=0, description="本轮查询返回的字段数。")
+    columnCount: int = Field(default=0, description="本轮查询返回的字段数量。")
     chartType: str = Field(default="-", description="前端展示用的图表类型。")
     createdAt: str = Field(description="前端展示用的消息时间。")
     generatedSql: str = Field(default="", description="本轮实际执行的 SQL。")
@@ -26,12 +25,13 @@ class ConversationTurn(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="风险提示或兜底说明。")
     traceSteps: list[dict[str, Any]] = Field(default_factory=list, description="执行过程步骤。")
     followups: list[str] = Field(default_factory=list, description="后续追问建议。")
+    assistantHtml: str = Field(default="", description="助手回答卡片的前端 HTML 快照。")
 
 
 class Conversation(BaseModel):
     """AI 查数工作台中的一个会话。
 
-    会话属于产品侧状态，和示例业务数据库解耦。当前版本先落到本地 JSON 文件，
+    当前版本先落到本地 JSON 文件，便于单机演示和面试讲解。
     后续接入用户登录后，可以平滑迁移到 MySQL、PostgreSQL 或 Redis。
     """
 
