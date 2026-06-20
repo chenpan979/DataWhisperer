@@ -1,11 +1,14 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class ConversationTurn(BaseModel):
-    """一次问答轮次的持久化摘要。
+    """一次问答轮次的持久化快照。
 
-    这里不保存完整查询结果，主要保存左侧历史列表和切回会话时最需要展示的信息。
-    完整结果包含表格、图表和 SQL，体积会更大，后续可以按需拆成独立的结果快照表。
+    V3.11.4 只保存了摘要，所以切回历史会话时只能看到“行数、字段数、图表类型”。
+    V3.11.5 开始保存完整结果快照：结论、图表配置、表格数据、SQL、告警和追问建议。
+    这样用户刷新页面或重启后端后，仍然能看到接近原始回答的完整对话内容。
     """
 
     traceId: str = Field(description="本轮问答的唯一标识。")
@@ -15,6 +18,14 @@ class ConversationTurn(BaseModel):
     columnCount: int = Field(default=0, description="本轮查询返回的字段数。")
     chartType: str = Field(default="-", description="前端展示用的图表类型。")
     createdAt: str = Field(description="前端展示用的消息时间。")
+    generatedSql: str = Field(default="", description="本轮实际执行的 SQL。")
+    sqlExplanation: str = Field(default="", description="SQL 生成说明。")
+    columns: list[str] = Field(default_factory=list, description="查询结果字段。")
+    rows: list[dict[str, Any]] = Field(default_factory=list, description="查询结果行数据。")
+    chart: dict[str, Any] = Field(default_factory=dict, description="ECharts 图表配置。")
+    warnings: list[str] = Field(default_factory=list, description="风险提示或兜底说明。")
+    traceSteps: list[dict[str, Any]] = Field(default_factory=list, description="执行过程步骤。")
+    followups: list[str] = Field(default_factory=list, description="后续追问建议。")
 
 
 class Conversation(BaseModel):
@@ -59,4 +70,3 @@ class ConversationUpdate(BaseModel):
     preview: str | None = None
     customTitle: bool | None = None
     turns: list[ConversationTurn] | None = None
-

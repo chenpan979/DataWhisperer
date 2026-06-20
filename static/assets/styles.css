@@ -410,6 +410,176 @@ svg {
   padding: 7px 10px;
 }
 
+.history-insight.full {
+  background: #f8fbfa;
+  border-left: 3px solid #14a99a;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.history-warning-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-chart-card {
+  background: #ffffff;
+  border: 1px solid #dbe7e4;
+  border-radius: 8px;
+  box-shadow: 0 14px 30px rgba(15, 37, 61, 0.06);
+  margin: 0;
+  padding: 14px 16px 8px;
+}
+
+.history-chart-card figcaption {
+  color: #0f253d;
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.history-chart-svg {
+  display: block;
+  height: 260px;
+  width: 100%;
+}
+
+.history-chart-svg line {
+  stroke: #d8e4e8;
+  stroke-width: 1;
+}
+
+.history-chart-svg rect {
+  fill: #5873c8;
+}
+
+.history-chart-svg text {
+  fill: #64748b;
+  font-size: 12px;
+}
+
+.history-chart-svg circle {
+  fill: #0f9f92;
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+.history-line-area {
+  fill: rgba(20, 184, 166, 0.12);
+}
+
+.history-line-path {
+  fill: none;
+  stroke: #0f9f92;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.history-detail-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.history-detail {
+  background: #ffffff;
+  border: 1px solid #dbe7e4;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.history-detail summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 12px 14px;
+}
+
+.history-detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-detail summary span {
+  color: #0f253d;
+  font-weight: 800;
+}
+
+.history-detail summary small {
+  color: #6b7b8c;
+  font-size: 12px;
+}
+
+.history-table-wrap {
+  border-top: 1px solid #e2ece9;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.history-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.history-table th,
+.history-table td {
+  border-bottom: 1px solid #e2ece9;
+  padding: 10px 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.history-table th {
+  background: #f4f8f7;
+  color: #0f253d;
+  font-weight: 800;
+}
+
+.history-sql-explanation {
+  border-top: 1px solid #e2ece9;
+  color: #526273;
+  margin: 0;
+  padding: 10px 14px 0;
+}
+
+.history-sql-viewer {
+  padding: 12px 14px 14px;
+}
+
+.history-sql-viewer pre {
+  background: #f8fbfa;
+  border: 1px solid #dbe7e4;
+  border-radius: 8px;
+  color: #0f253d;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+  overflow: auto;
+  padding: 14px 16px;
+}
+
+.history-followups {
+  border-top: 1px solid #edf2f0;
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.history-followups > span {
+  color: #526273;
+  font-size: 13px;
+}
+
+.history-followups > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .sidebar-profile {
   align-items: center;
   background: #f7faf9;

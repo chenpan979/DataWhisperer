@@ -980,6 +980,14 @@ function saveConversationTurn(data) {
       columnCount: data.columns?.length || 0,
       chartType: chartTypeLabels[data.chart?.type] || data.chart?.type || "-",
       createdAt: currentMessageTime(),
+      generatedSql: data.generated_sql || "",
+      sqlExplanation: data.sql_explanation || "",
+      columns: data.columns || [],
+      rows: data.rows || [],
+      chart: data.chart || {},
+      warnings: data.warnings || [],
+      traceSteps: data.trace_steps || [],
+      followups: generateFollowupQuestions(data),
     };
     conversation.turns.push(nextTurn);
   }
@@ -1022,6 +1030,7 @@ function createHistoryUserNode(turn) {
 function createHistoryAssistantNode(turn) {
   const article = document.createElement("article");
   article.className = "chat-message assistant result-message archived-turn conversation-history-turn";
+  const fullSnapshot = hasFullTurnSnapshot(turn);
   article.innerHTML = `
     <div class="assistant-avatar" aria-hidden="true"></div>
     <div class="message-stack">
@@ -1030,16 +1039,225 @@ function createHistoryAssistantNode(turn) {
         <span class="message-time">${escapeHtml(turn.createdAt || "--:--")}</span>
       </div>
       <div class="chat-bubble result-bubble">
-        <p class="history-insight">${escapeHtml(turn.insight || "暂无分析结论。")}</p>
-        <div class="history-metrics" aria-label="历史分析摘要">
-          <span>${Number(turn.rowCount || 0)} 行结果</span>
-          <span>${Number(turn.columnCount || 0)} 个字段</span>
-          <span>${escapeHtml(turn.chartType || "-")}</span>
-        </div>
+        ${fullSnapshot ? renderFullHistorySnapshot(turn) : renderCompactHistorySnapshot(turn)}
       </div>
     </div>
   `;
   return article;
+}
+
+function hasFullTurnSnapshot(turn) {
+  return Boolean(
+    turn.generatedSql
+      || turn.chart?.type
+      || turn.columns?.length
+      || turn.rows?.length
+      || turn.followups?.length
+      || turn.warnings?.length,
+  );
+}
+
+function renderCompactHistorySnapshot(turn) {
+  return `
+    <p class="history-insight">${escapeHtml(turn.insight || "暂无分析结论。")}</p>
+    <div class="history-metrics" aria-label="历史分析摘要">
+      <span>${Number(turn.rowCount || 0)} 行结果</span>
+      <span>${Number(turn.columnCount || 0)} 个字段</span>
+      <span>${escapeHtml(turn.chartType || "-")}</span>
+    </div>
+  `;
+}
+
+function renderFullHistorySnapshot(turn) {
+  const columns = Array.isArray(turn.columns) ? turn.columns : [];
+  const rows = Array.isArray(turn.rows) ? turn.rows : [];
+  const warnings = Array.isArray(turn.warnings) ? turn.warnings : [];
+  const followups = Array.isArray(turn.followups) ? turn.followups : [];
+  const traceSteps = Array.isArray(turn.traceSteps) ? turn.traceSteps : [];
+  const sql = turn.generatedSql || "";
+
+  return `
+    <p class="history-insight full">${escapeHtml(turn.insight || "暂无分析结论。")}</p>
+    ${renderHistoryWarnings(warnings)}
+    ${renderHistoryChart(turn.chart || {}, rows, columns)}
+    <div class="history-metrics" aria-label="历史分析摘要">
+      <span>${Number(turn.rowCount || rows.length || 0)} 行结果</span>
+      <span>${Number(turn.columnCount || columns.length || 0)} 个字段</span>
+      <span>${escapeHtml(turn.chartType || chartTypeLabels[turn.chart?.type] || turn.chart?.type || "-")}</span>
+      <span>${traceSteps.length || 0} 个步骤</span>
+    </div>
+    <div class="history-detail-stack">
+      ${renderHistoryTableDetails(columns, rows)}
+      ${renderHistorySqlDetails(sql, turn.sqlExplanation)}
+    </div>
+    ${renderHistoryFollowups(followups)}
+  `;
+}
+
+function renderHistoryWarnings(warnings) {
+  if (!warnings.length) {
+    return "";
+  }
+  return `
+    <div class="history-warning-list">
+      ${warnings.map((warning) => `<div class="warning-item">${escapeHtml(warning)}</div>`).join("")}
+    </div>
+  `;
+}
+
+function renderHistoryChart(chartOption = {}, rows = [], columns = []) {
+  if (!rows.length || chartOption.type === "empty") {
+    return "";
+  }
+
+  const title = chartOption.title?.text || "历史图表";
+  const series = chartOption.series?.[0] || {};
+  const labels = chartOption.xAxis?.data || series.data?.map((item) => item.name) || rows.map((row) => row[columns[0]]);
+  const values = (series.data || rows.map((row) => row[columns[1]])).map((item) =>
+    typeof item === "object" && item !== null ? item.value : item,
+  );
+  const numericValues = values.map((value) => Number(value || 0));
+  const maxValue = Math.max(...numericValues, 1);
+
+  if (chartOption.type === "line") {
+    return renderHistoryLineChart(title, labels, numericValues, maxValue);
+  }
+  return renderHistoryBarChart(title, labels, numericValues, maxValue);
+}
+
+function renderHistoryBarChart(title, labels, values, maxValue) {
+  const width = 720;
+  const height = 260;
+  const plotX = 54;
+  const plotY = 34;
+  const plotWidth = 620;
+  const plotHeight = 160;
+  const barGap = 18;
+  const barWidth = Math.max(24, (plotWidth - barGap * Math.max(labels.length - 1, 0)) / Math.max(labels.length, 1));
+  const bars = labels
+    .map((label, index) => {
+      const value = values[index] || 0;
+      const barHeight = Math.max(2, (value / maxValue) * plotHeight);
+      const x = plotX + index * (barWidth + barGap);
+      const y = plotY + plotHeight - barHeight;
+      return `
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="6"></rect>
+        <text x="${x + barWidth / 2}" y="${plotY + plotHeight + 24}" text-anchor="middle">${escapeHtml(shortLabel(label))}</text>
+      `;
+    })
+    .join("");
+
+  return `
+    <figure class="history-chart-card">
+      <figcaption>${escapeHtml(title)}</figcaption>
+      <svg class="history-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
+        <line x1="${plotX}" y1="${plotY + plotHeight}" x2="${plotX + plotWidth}" y2="${plotY + plotHeight}"></line>
+        ${bars}
+      </svg>
+    </figure>
+  `;
+}
+
+function renderHistoryLineChart(title, labels, values, maxValue) {
+  const width = 720;
+  const height = 260;
+  const plotX = 54;
+  const plotY = 34;
+  const plotWidth = 620;
+  const plotHeight = 160;
+  const points = values.map((value, index) => {
+    const x = plotX + (plotWidth / Math.max(values.length - 1, 1)) * index;
+    const y = plotY + plotHeight - (value / maxValue) * plotHeight;
+    return { x, y, value, label: labels[index] };
+  });
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const areaPath = `${path} L ${plotX + plotWidth} ${plotY + plotHeight} L ${plotX} ${plotY + plotHeight} Z`;
+
+  return `
+    <figure class="history-chart-card">
+      <figcaption>${escapeHtml(title)}</figcaption>
+      <svg class="history-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
+        <path class="history-line-area" d="${areaPath}"></path>
+        <path class="history-line-path" d="${path}"></path>
+        ${points
+          .map(
+            (point) => `
+              <circle cx="${point.x}" cy="${point.y}" r="4"></circle>
+              <text x="${point.x}" y="${plotY + plotHeight + 24}" text-anchor="middle">${escapeHtml(shortLabel(point.label))}</text>
+            `,
+          )
+          .join("")}
+      </svg>
+    </figure>
+  `;
+}
+
+function renderHistoryTableDetails(columns, rows) {
+  if (!columns.length) {
+    return "";
+  }
+  return `
+    <details class="history-detail">
+      <summary>
+        <span>详细数据</span>
+        <small>${rows.length} 行</small>
+      </summary>
+      <div class="history-table-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>${columns.map((column) => `<th>${escapeHtml(labelForColumn(column))}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) => `
+                  <tr>${columns.map((column) => `<td>${escapeHtml(formatCell(row[column]))}</td>`).join("")}</tr>
+                `,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  `;
+}
+
+function renderHistorySqlDetails(sql, explanation = "") {
+  if (!sql) {
+    return "";
+  }
+  const formattedSql = formatSqlForDisplay(sql);
+  return `
+    <details class="history-detail">
+      <summary>
+        <span>生成 SQL</span>
+        <small>${countSqlLines(formattedSql)} 行</small>
+      </summary>
+      ${explanation ? `<p class="history-sql-explanation">${escapeHtml(explanation)}</p>` : ""}
+      <div class="history-sql-viewer">
+        <pre><code>${highlightSql(formattedSql)}</code></pre>
+      </div>
+    </details>
+  `;
+}
+
+function renderHistoryFollowups(followups) {
+  if (!followups.length) {
+    return "";
+  }
+  return `
+    <div class="history-followups">
+      <span>你可以继续追问：</span>
+      <div>
+        ${followups.map((question) => `<button class="followup-chip" type="button" data-question="${escapeHtml(question)}">${escapeHtml(question)}</button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function shortLabel(label) {
+  const text = String(label ?? "-");
+  return text.length > 12 ? `${text.slice(0, 12)}...` : text;
 }
 
 function resetConversation(options = {}) {
@@ -2626,6 +2844,17 @@ function formatGeneratedSql(sql, data = {}) {
   return annotateSqlText(formatSqlText(stripLeadingSqlComments(sql)), data);
 }
 
+function formatSqlForDisplay(sql) {
+  if (!sql || isPlaceholderSql(sql)) {
+    return sql || "";
+  }
+  return formatSqlText(stripLeadingSqlComments(sql));
+}
+
+function countSqlLines(sql) {
+  return String(sql || "").split(/\r?\n/).length;
+}
+
 function setSqlContent(sql) {
   state.currentSql = sql || "-- SQL unavailable";
   const lines = state.currentSql.split(/\r?\n/);
@@ -3556,6 +3785,16 @@ function bindEvents() {
     el.questionInput.value = button.dataset.question;
     switchView("analysisView");
     el.questionInput.focus();
+  });
+  el.chatThread?.addEventListener("click", (event) => {
+    const button = event.target.closest(".conversation-history-turn .followup-chip");
+    if (!button) {
+      return;
+    }
+    el.questionInput.value = button.dataset.question || "";
+    switchView("analysisView");
+    el.questionInput.focus();
+    scrollChatToBottom();
   });
   el.refreshSchemaFilesButton.addEventListener("click", () => loadManagedFiles("schema"));
   el.refreshRagFilesButton.addEventListener("click", () => loadManagedFiles("rag"));

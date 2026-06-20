@@ -521,7 +521,7 @@ def _build_version_snapshots(
     retrieval_suite = _find_suite(suites, "metric_retrieval")
     overall = _overall_rate(suites)
     current = EvaluationVersionSnapshot(
-        version="v3.11.4",
+        version="v3.11.5",
         overall_pass_rate=overall,
         sql_executable_rate=text_suite.pass_rate if text_suite else 0.0,
         safety_pass_rate=safety_suite.pass_rate if safety_suite else 0.0,

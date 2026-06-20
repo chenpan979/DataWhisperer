@@ -19,6 +19,7 @@ class ConversationStore:
     """本地会话持久化仓库。
 
     V3.11.4 先用 JSON 文件解决“刷新页面或重启后端后对话丢失”的问题。
+    V3.11.5 继续把轮次内容升级为完整结果快照，让历史会话恢复后不只显示摘要。
     这个实现刻意保持简单：单机演示稳定、代码容易讲清楚，也不会影响示例 MySQL 数据库。
     """
 
@@ -127,4 +128,3 @@ def _now_ms() -> int:
 
 def get_conversation_store() -> ConversationStore:
     return ConversationStore()
-
