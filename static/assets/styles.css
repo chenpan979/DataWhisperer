@@ -4532,49 +4532,44 @@ td {
 }
 
 .settings-tabs {
-  background: rgba(248, 252, 251, 0.96);
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
   border-bottom: 1px solid #d7e5e1;
   display: flex;
-  gap: 22px;
+  gap: 6px;
   overflow-x: auto;
-  padding: 0 4px;
+  padding: 0 0 0 2px;
   position: sticky;
   top: 0;
-  z-index: 8;
+  z-index: 12;
 }
 
 .settings-tabs button {
   background: transparent;
   border: 0;
+  border-bottom: 2px solid transparent;
   color: #475569;
   cursor: pointer;
   font-size: 14px;
   font-weight: 750;
-  padding: 14px 0 13px;
+  height: 42px;
+  padding: 0 16px;
   position: relative;
   white-space: nowrap;
 }
 
 .settings-tabs button::after {
-  background: #0d9488;
-  bottom: -1px;
-  content: "";
-  height: 2px;
-  left: 0;
-  opacity: 0;
-  position: absolute;
-  right: 0;
-  transform: scaleX(0.55);
-  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  display: none;
 }
 
+.settings-tabs button:hover,
 .settings-tabs button.active {
   color: #0d9488;
 }
 
-.settings-tabs button.active::after {
-  opacity: 1;
-  transform: scaleX(1);
+.settings-tabs button.active {
+  border-bottom-color: #0d9488;
+  font-weight: 800;
 }
 
 .settings-grid {

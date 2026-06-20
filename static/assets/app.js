@@ -2144,10 +2144,9 @@ function switchSettingsTab(tabName) {
     panel.classList.toggle("active", panel.dataset.settingsPanel === tabName);
   });
   const settingsWorkspace = document.querySelector(".settings-workspace");
-  const settingsTabs = document.querySelector("#settingsTabs");
-  if (settingsWorkspace && settingsTabs) {
+  if (settingsWorkspace) {
     settingsWorkspace.scrollTo({
-      top: Math.max(0, settingsTabs.offsetTop - 8),
+      top: 0,
       behavior: "smooth",
     });
   }

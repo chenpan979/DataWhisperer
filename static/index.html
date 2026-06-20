@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.11" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.12" />
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.11.11"></script>
+    <script defer src="/static/assets/app.js?v=3.11.12"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -922,24 +922,6 @@
                 <button type="button" data-settings-tab="security">安全策略</button>
               </div>
 
-              <div class="settings-summary-grid" aria-label="设置概览">
-                <article>
-                  <span>当前数据源</span>
-                  <strong id="settingsSummaryDatasource">示例 MySQL 库</strong>
-                  <p>用于 AI 查数、schema 读取和演示查询。</p>
-                </article>
-                <article>
-                  <span>大模型服务</span>
-                  <strong id="settingsSummaryModel">DashScope / qwen-plus</strong>
-                  <p>统一走 OpenAI-compatible Chat Completions。</p>
-                </article>
-                <article>
-                  <span>安全边界</span>
-                  <strong>只读 SQL</strong>
-                  <p>默认禁止写入、删除、DDL、多语句和危险函数。</p>
-                </article>
-              </div>
-
               <div class="settings-grid settings-tab-panels">
                 <section class="settings-card settings-card-wide settings-tab-panel active" data-settings-panel="datasource">
                   <div class="settings-card-head">
@@ -951,6 +933,23 @@
                       <p>配置业务数据库连接信息，当前版本用于展示和连接检测。</p>
                     </div>
                     <span class="state-label ok" id="settingsDbState">已连接</span>
+                  </div>
+                  <div class="settings-summary-grid" aria-label="设置概览">
+                    <article>
+                      <span>当前数据源</span>
+                      <strong id="settingsSummaryDatasource">示例 MySQL 库</strong>
+                      <p>用于 AI 查数、schema 读取和演示查询。</p>
+                    </article>
+                    <article>
+                      <span>大模型服务</span>
+                      <strong id="settingsSummaryModel">DashScope / qwen-plus</strong>
+                      <p>统一走 OpenAI-compatible Chat Completions。</p>
+                    </article>
+                    <article>
+                      <span>安全边界</span>
+                      <strong>只读 SQL</strong>
+                      <p>默认禁止写入、删除、DDL、多语句和危险函数。</p>
+                    </article>
                   </div>
                   <div class="settings-form-grid">
                     <label class="settings-field settings-field-wide">
