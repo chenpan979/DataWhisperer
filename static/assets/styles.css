@@ -4583,11 +4583,11 @@ td {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.settings-tab-panel {
+.settings-card.settings-tab-panel {
   display: none;
 }
 
-.settings-tab-panel.active {
+.settings-card.settings-tab-panel.active {
   display: flex;
 }
 

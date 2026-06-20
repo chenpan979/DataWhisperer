@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.9" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.10" />
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.11.9"></script>
+    <script defer src="/static/assets/app.js?v=3.11.10"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -915,6 +915,13 @@
                 </div>
               </div>
 
+              <div class="settings-tabs" id="settingsTabs" role="tablist" aria-label="系统设置分类">
+                <button class="active" type="button" data-settings-tab="datasource">数据源配置</button>
+                <button type="button" data-settings-tab="model">模型配置</button>
+                <button type="button" data-settings-tab="account">账号偏好</button>
+                <button type="button" data-settings-tab="security">安全策略</button>
+              </div>
+
               <div class="settings-summary-grid" aria-label="设置概览">
                 <article>
                   <span>当前数据源</span>
@@ -931,13 +938,6 @@
                   <strong>只读 SQL</strong>
                   <p>默认禁止写入、删除、DDL、多语句和危险函数。</p>
                 </article>
-              </div>
-
-              <div class="settings-tabs" id="settingsTabs" role="tablist" aria-label="系统设置分类">
-                <button class="active" type="button" data-settings-tab="datasource">数据源配置</button>
-                <button type="button" data-settings-tab="model">模型配置</button>
-                <button type="button" data-settings-tab="account">账号偏好</button>
-                <button type="button" data-settings-tab="security">安全策略</button>
               </div>
 
               <div class="settings-grid settings-tab-panels">
