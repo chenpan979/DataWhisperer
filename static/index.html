@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.8" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.9" />
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script defer src="/static/assets/app.js?v=3.11.8"></script>
+    <script defer src="/static/assets/app.js?v=3.11.9"></script>
   </head>
   <body>
     <svg aria-hidden="true" class="icon-sprite">
@@ -170,10 +170,10 @@
           </div>
 
           <div class="sidebar-profile" aria-label="当前用户">
-            <div class="profile-avatar">管</div>
+            <div class="profile-avatar" id="sidebarProfileAvatar">管</div>
             <div>
-              <strong>admin</strong>
-              <span>数据工作台管理员</span>
+              <strong id="sidebarProfileName">admin</strong>
+              <span id="sidebarProfileRole">数据工作台管理员</span>
             </div>
           </div>
         </aside>
@@ -933,8 +933,15 @@
                 </article>
               </div>
 
-              <div class="settings-grid">
-                <section class="settings-card settings-card-wide">
+              <div class="settings-tabs" id="settingsTabs" role="tablist" aria-label="系统设置分类">
+                <button class="active" type="button" data-settings-tab="datasource">数据源配置</button>
+                <button type="button" data-settings-tab="model">模型配置</button>
+                <button type="button" data-settings-tab="account">账号偏好</button>
+                <button type="button" data-settings-tab="security">安全策略</button>
+              </div>
+
+              <div class="settings-grid settings-tab-panels">
+                <section class="settings-card settings-card-wide settings-tab-panel active" data-settings-panel="datasource">
                   <div class="settings-card-head">
                     <div class="settings-icon">
                       <svg><use href="#icon-database"></use></svg>
@@ -999,7 +1006,7 @@
                   </div>
                 </section>
 
-                <section class="settings-card">
+                <section class="settings-card settings-tab-panel" data-settings-panel="model">
                   <div class="settings-card-head">
                     <div class="settings-icon">
                       <svg><use href="#icon-brain"></use></svg>
@@ -1038,7 +1045,7 @@
                   </button>
                 </section>
 
-                <section class="settings-card">
+                <section class="settings-card settings-tab-panel" data-settings-panel="account">
                   <div class="settings-card-head">
                     <div class="settings-icon">
                       <svg><use href="#icon-user"></use></svg>
@@ -1049,16 +1056,25 @@
                     </div>
                   </div>
                   <div class="profile-settings-row">
-                    <div class="profile-avatar large">管</div>
+                    <div class="profile-avatar large" id="settingsProfileAvatar">管</div>
                     <div>
-                      <strong>admin</strong>
-                      <span>数据工作台管理员</span>
+                      <strong id="settingsProfileName">admin</strong>
+                      <span id="settingsProfileRole">数据工作台管理员</span>
                     </div>
+                    <label class="secondary-button compact-button avatar-upload-button" for="settingsAvatarInput">
+                      <svg><use href="#icon-upload"></use></svg>
+                      <span>上传头像</span>
+                    </label>
+                    <input class="file-input" id="settingsAvatarInput" type="file" accept="image/png,image/jpeg,image/webp" />
                   </div>
                   <div class="settings-form-grid single">
                     <label class="settings-field">
                       <span>显示名称</span>
                       <input id="settingsDisplayName" type="text" value="admin" />
+                    </label>
+                    <label class="settings-field">
+                      <span>岗位角色</span>
+                      <input id="settingsRole" type="text" value="数据工作台管理员" />
                     </label>
                     <label class="settings-field">
                       <span>界面语言</span>
@@ -1077,13 +1093,37 @@
                       </select>
                     </label>
                   </div>
+                  <div class="settings-password-card">
+                    <div>
+                      <strong>修改密码</strong>
+                      <span>当前版本先做前端草稿校验，后续接入账号服务后可改为真实密码接口。</span>
+                    </div>
+                    <div class="settings-form-grid single">
+                      <label class="settings-field">
+                        <span>当前密码</span>
+                        <input id="settingsCurrentPassword" type="password" autocomplete="current-password" />
+                      </label>
+                      <label class="settings-field">
+                        <span>新密码</span>
+                        <input id="settingsNewPassword" type="password" autocomplete="new-password" />
+                      </label>
+                      <label class="settings-field">
+                        <span>确认新密码</span>
+                        <input id="settingsConfirmPassword" type="password" autocomplete="new-password" />
+                      </label>
+                    </div>
+                    <button class="secondary-button settings-full-button" id="settingsChangePasswordButton" type="button">
+                      <svg><use href="#icon-check"></use></svg>
+                      <span>更新密码</span>
+                    </button>
+                  </div>
                   <button class="secondary-button settings-full-button" id="settingsSaveProfileButton" type="button">
                     <svg><use href="#icon-check"></use></svg>
                     <span>保存账户偏好</span>
                   </button>
                 </section>
 
-                <section class="settings-card settings-card-wide">
+                <section class="settings-card settings-card-wide settings-tab-panel" data-settings-panel="security">
                   <div class="settings-card-head">
                     <div class="settings-icon">
                       <svg><use href="#icon-shield"></use></svg>

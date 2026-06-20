@@ -4531,10 +4531,64 @@ td {
   margin: 10px 0 0;
 }
 
+.settings-tabs {
+  border-bottom: 1px solid #d7e5e1;
+  display: flex;
+  gap: 22px;
+  overflow-x: auto;
+  padding: 0 4px;
+}
+
+.settings-tabs button {
+  background: transparent;
+  border: 0;
+  color: #475569;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 750;
+  padding: 14px 0 13px;
+  position: relative;
+  white-space: nowrap;
+}
+
+.settings-tabs button::after {
+  background: #0d9488;
+  bottom: -1px;
+  content: "";
+  height: 2px;
+  left: 0;
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  transform: scaleX(0.55);
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.settings-tabs button.active {
+  color: #0d9488;
+}
+
+.settings-tabs button.active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
 .settings-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+}
+
+.settings-tab-panels {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-tab-panel {
+  display: none;
+}
+
+.settings-tab-panel.active {
+  display: flex;
 }
 
 .settings-card {
@@ -4702,6 +4756,16 @@ td {
   width: 46px;
 }
 
+.profile-avatar.has-image {
+  background-position: center;
+  background-size: cover;
+  color: transparent;
+}
+
+.avatar-upload-button {
+  margin-left: auto;
+}
+
 .profile-settings-row strong,
 .profile-settings-row span {
   display: block;
@@ -4714,6 +4778,31 @@ td {
 
 .profile-settings-row span {
   color: #64748b;
+  margin-top: 3px;
+}
+
+.settings-password-card {
+  background: #f8fafc;
+  border: 1px solid #e2ece8;
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.settings-password-card strong,
+.settings-password-card span {
+  display: block;
+}
+
+.settings-password-card strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.settings-password-card span {
+  color: #64748b;
+  line-height: 1.6;
   margin-top: 3px;
 }
 

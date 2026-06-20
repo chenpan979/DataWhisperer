@@ -45,6 +45,8 @@ const defaultSettings = {
   chatModel: "qwen-plus",
   embeddingModel: "text-embedding-v4",
   displayName: "admin",
+  role: "数据工作台管理员",
+  avatarDataUrl: "",
   language: "zh-CN",
   defaultView: "analysisView",
 };
@@ -228,6 +230,11 @@ const el = {
   evaluationModelBody: document.querySelector("#evaluationModelBody"),
   evaluationErrorList: document.querySelector("#evaluationErrorList"),
   settingsSaveState: document.querySelector("#settingsSaveState"),
+  sidebarProfileAvatar: document.querySelector("#sidebarProfileAvatar"),
+  sidebarProfileName: document.querySelector("#sidebarProfileName"),
+  sidebarProfileRole: document.querySelector("#sidebarProfileRole"),
+  settingsTabs: document.querySelectorAll("[data-settings-tab]"),
+  settingsTabPanels: document.querySelectorAll("[data-settings-panel]"),
   settingsSummaryDatasource: document.querySelector("#settingsSummaryDatasource"),
   settingsSummaryModel: document.querySelector("#settingsSummaryModel"),
   settingsDbState: document.querySelector("#settingsDbState"),
@@ -246,9 +253,18 @@ const el = {
   settingsBaseUrl: document.querySelector("#settingsBaseUrl"),
   settingsChatModel: document.querySelector("#settingsChatModel"),
   settingsEmbeddingModel: document.querySelector("#settingsEmbeddingModel"),
+  settingsProfileAvatar: document.querySelector("#settingsProfileAvatar"),
+  settingsProfileName: document.querySelector("#settingsProfileName"),
+  settingsProfileRole: document.querySelector("#settingsProfileRole"),
+  settingsAvatarInput: document.querySelector("#settingsAvatarInput"),
   settingsDisplayName: document.querySelector("#settingsDisplayName"),
+  settingsRole: document.querySelector("#settingsRole"),
   settingsLanguage: document.querySelector("#settingsLanguage"),
   settingsDefaultView: document.querySelector("#settingsDefaultView"),
+  settingsCurrentPassword: document.querySelector("#settingsCurrentPassword"),
+  settingsNewPassword: document.querySelector("#settingsNewPassword"),
+  settingsConfirmPassword: document.querySelector("#settingsConfirmPassword"),
+  settingsChangePasswordButton: document.querySelector("#settingsChangePasswordButton"),
   settingsSaveModelButton: document.querySelector("#settingsSaveModelButton"),
   settingsSaveProfileButton: document.querySelector("#settingsSaveProfileButton"),
   settingsResetButton: document.querySelector("#settingsResetButton"),
@@ -2039,6 +2055,8 @@ function collectSettingsDraft() {
     chatModel: el.settingsChatModel?.value.trim() || defaultSettings.chatModel,
     embeddingModel: el.settingsEmbeddingModel?.value.trim() || defaultSettings.embeddingModel,
     displayName: el.settingsDisplayName?.value.trim() || defaultSettings.displayName,
+    role: el.settingsRole?.value.trim() || defaultSettings.role,
+    avatarDataUrl: readSettingsDraft().avatarDataUrl || defaultSettings.avatarDataUrl,
     language: el.settingsLanguage?.value || defaultSettings.language,
     defaultView: el.settingsDefaultView?.value || defaultSettings.defaultView,
   };
@@ -2061,6 +2079,34 @@ function renderSettingsSummary(settings) {
       settings.chatModel || defaultSettings.chatModel
     }`;
   }
+  renderProfileSettings(settings);
+}
+
+function renderProfileSettings(settings) {
+  const displayName = settings.displayName || defaultSettings.displayName;
+  const role = settings.role || defaultSettings.role;
+  const avatarText = displayName.slice(0, 1).toUpperCase();
+  const avatarDataUrl = settings.avatarDataUrl || "";
+  [el.sidebarProfileAvatar, el.settingsProfileAvatar].forEach((avatar) => {
+    if (!avatar) {
+      return;
+    }
+    avatar.textContent = avatarDataUrl ? "" : avatarText;
+    avatar.style.backgroundImage = avatarDataUrl ? `url("${avatarDataUrl}")` : "";
+    avatar.classList.toggle("has-image", Boolean(avatarDataUrl));
+  });
+  if (el.sidebarProfileName) {
+    el.sidebarProfileName.textContent = displayName;
+  }
+  if (el.sidebarProfileRole) {
+    el.sidebarProfileRole.textContent = role;
+  }
+  if (el.settingsProfileName) {
+    el.settingsProfileName.textContent = displayName;
+  }
+  if (el.settingsProfileRole) {
+    el.settingsProfileRole.textContent = role;
+  }
 }
 
 function hydrateSettingsForm() {
@@ -2077,6 +2123,7 @@ function hydrateSettingsForm() {
   setControlValue(el.settingsChatModel, settings.chatModel);
   setControlValue(el.settingsEmbeddingModel, settings.embeddingModel);
   setControlValue(el.settingsDisplayName, settings.displayName);
+  setControlValue(el.settingsRole, settings.role);
   setControlValue(el.settingsLanguage, settings.language);
   setControlValue(el.settingsDefaultView, settings.defaultView);
   renderSettingsSummary(settings);
@@ -2089,6 +2136,63 @@ function saveSettingsDraft(button, sectionLabel) {
   renderSettingsSummary(settings);
   setSettingsStatus(`${sectionLabel}已保存`, "ok");
   markButtonDone(button, "已保存");
+}
+
+function switchSettingsTab(tabName) {
+  el.settingsTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.settingsTab === tabName));
+  el.settingsTabPanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.settingsPanel === tabName);
+  });
+}
+
+function handleSettingsAvatarUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+  if (!file.type.startsWith("image/")) {
+    setSettingsStatus("请选择图片文件", "error");
+    return;
+  }
+  if (file.size > 1024 * 1024) {
+    setSettingsStatus("头像不能超过 1MB", "error");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const settings = { ...collectSettingsDraft(), avatarDataUrl: String(reader.result || "") };
+    writeSettingsDraft(settings);
+    renderSettingsSummary(settings);
+    setSettingsStatus("头像已更新", "ok");
+  };
+  reader.onerror = () => setSettingsStatus("头像读取失败", "error");
+  reader.readAsDataURL(file);
+}
+
+function changeSettingsPassword() {
+  const current = el.settingsCurrentPassword?.value || "";
+  const next = el.settingsNewPassword?.value || "";
+  const confirm = el.settingsConfirmPassword?.value || "";
+  if (!current || !next || !confirm) {
+    setSettingsStatus("请完整填写密码", "error");
+    return;
+  }
+  if (next.length < 8) {
+    setSettingsStatus("新密码至少 8 位", "error");
+    return;
+  }
+  if (next !== confirm) {
+    setSettingsStatus("两次新密码不一致", "error");
+    return;
+  }
+  [el.settingsCurrentPassword, el.settingsNewPassword, el.settingsConfirmPassword].forEach((input) => {
+    if (input) {
+      input.value = "";
+    }
+  });
+  setSettingsStatus("密码草稿已更新", "ok");
+  markButtonDone(el.settingsChangePasswordButton, "已更新");
 }
 
 function resetSettingsDraft() {
@@ -3991,6 +4095,11 @@ function bindEvents() {
   el.settingsSaveProfileButton?.addEventListener("click", () =>
     saveSettingsDraft(el.settingsSaveProfileButton, "账户偏好"),
   );
+  el.settingsTabs.forEach((tab) => {
+    tab.addEventListener("click", () => switchSettingsTab(tab.dataset.settingsTab));
+  });
+  el.settingsAvatarInput?.addEventListener("change", handleSettingsAvatarUpload);
+  el.settingsChangePasswordButton?.addEventListener("click", changeSettingsPassword);
   el.settingsResetButton?.addEventListener("click", resetSettingsDraft);
   document.querySelectorAll("#settingsView input, #settingsView select").forEach((control) => {
     control.addEventListener("input", () => setSettingsStatus("有未保存修改", "warning"));
