@@ -2143,6 +2143,14 @@ function switchSettingsTab(tabName) {
   el.settingsTabPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.settingsPanel === tabName);
   });
+  const settingsWorkspace = document.querySelector(".settings-workspace");
+  const settingsTabs = document.querySelector("#settingsTabs");
+  if (settingsWorkspace && settingsTabs) {
+    settingsWorkspace.scrollTo({
+      top: Math.max(0, settingsTabs.offsetTop - 8),
+      behavior: "smooth",
+    });
+  }
 }
 
 function handleSettingsAvatarUpload(event) {

@@ -4532,11 +4532,15 @@ td {
 }
 
 .settings-tabs {
+  background: rgba(248, 252, 251, 0.96);
   border-bottom: 1px solid #d7e5e1;
   display: flex;
   gap: 22px;
   overflow-x: auto;
   padding: 0 4px;
+  position: sticky;
+  top: 0;
+  z-index: 8;
 }
 
 .settings-tabs button {
