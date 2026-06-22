@@ -230,6 +230,9 @@ def _require_auth_context(
     return AuthContext(user=user, tenant=tenant, membership=membership, workspace=workspace)
 
 
+require_auth_context = _require_auth_context
+
+
 @router.get("/me", response_model=AuthMeResponse)
 def get_current_user(
     auth_context: Annotated[AuthContext, Depends(_require_auth_context)],

@@ -13,6 +13,9 @@ def test_app_routes_exist() -> None:
     paths = {route.path for route in app.routes}
     assert "/" in paths
     assert "/api/health" in paths
+    assert "/api/auth/login" in paths
+    assert "/api/auth/register" in paths
+    assert "/api/auth/me" in paths
     assert "/api/examples" in paths
     assert "/api/schema/overview" in paths
     assert "/api/schema/graph" in paths

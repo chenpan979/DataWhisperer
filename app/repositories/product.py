@@ -411,6 +411,11 @@ class ConversationRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    def get_by_id(self, conversation_id: int) -> Conversation | None:
+        """按主键读取会话。"""
+
+        return self.session.get(Conversation, conversation_id)
+
     def list_recent(self, *, workspace_id: int, limit: int = 20) -> list[Conversation]:
         """按更新时间倒序列出最近会话。"""
 
@@ -452,6 +457,22 @@ class ConversationRepository:
         """重命名会话。"""
 
         conversation.title = title
+        self.session.flush()
+        return conversation
+
+    def update_metadata(
+        self,
+        conversation: Conversation,
+        *,
+        title: str | None = None,
+        summary: str | None = None,
+    ) -> Conversation:
+        """更新会话标题和摘要。"""
+
+        if title is not None:
+            conversation.title = title
+        if summary is not None:
+            conversation.summary = summary
         self.session.flush()
         return conversation
 
@@ -603,3 +624,20 @@ class AuditLogRepository:
         self.session.add(log)
         self.session.flush()
         return log
+
+    def exists(
+        self,
+        *,
+        tenant_id: int,
+        action: str,
+        user_id: int | None = None,
+    ) -> bool:
+        """检查某类审计事件是否已经发生。"""
+
+        statement = select(AuditLog.id).where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == action,
+        )
+        if user_id is not None:
+            statement = statement.where(AuditLog.user_id == user_id)
+        return self.session.scalar(statement.limit(1)) is not None
