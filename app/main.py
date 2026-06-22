@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.evaluations import router as evaluations_router
 from app.api.examples import router as examples_router
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
     app.include_router(examples_router, prefix="/api")
     app.include_router(schema_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")

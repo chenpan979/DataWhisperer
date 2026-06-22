@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     query_timeout_seconds: int = 20
     max_query_rows: int = 100
 
+    auth_token_secret: str = "datawhisperer-local-dev-secret"
+    auth_token_ttl_seconds: int = 7 * 24 * 60 * 60
+
     llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     llm_api_key: str = "replace-me"
     llm_model: str = "qwen-plus"

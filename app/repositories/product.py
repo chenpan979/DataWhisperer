@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db.product_models import (
@@ -103,6 +103,40 @@ class UserRepository:
 
         statement = select(User).where(User.email == email)
         return self.session.scalar(statement)
+
+    def get_by_account_in_tenant(
+        self,
+        *,
+        tenant_key: str,
+        account: str,
+    ) -> tuple[User, Tenant, TenantMembership] | None:
+        """在指定租户下按账号查找用户。
+
+        登录页允许用户输入邮箱，也允许 demo 环境输入 `admin` 这类显示名。
+        查询时必须带租户条件，避免未来多租户场景下跨租户误登录。
+        """
+
+        normalized_account = account.strip()
+        statement = (
+            select(User, Tenant, TenantMembership)
+            .join(TenantMembership, TenantMembership.user_id == User.id)
+            .join(Tenant, Tenant.id == TenantMembership.tenant_id)
+            .where(
+                Tenant.tenant_key == tenant_key,
+                Tenant.status == "active",
+                TenantMembership.status == "active",
+                User.status == "active",
+                or_(
+                    User.email == normalized_account,
+                    User.display_name == normalized_account,
+                ),
+            )
+        )
+        row = self.session.execute(statement).first()
+        if row is None:
+            return None
+        user, tenant, membership = row
+        return user, tenant, membership
 
     def create(
         self,
@@ -235,6 +269,29 @@ class WorkspaceRepository:
         if tenant_id is not None:
             statement = statement.where(Workspace.tenant_id == tenant_id)
         return list(self.session.scalars(statement).all())
+
+    def get_default_for_user(self, *, tenant_id: int, user_id: int) -> Workspace | None:
+        """读取用户在租户下的默认工作空间。
+
+        目前注册流程会创建 `default` 工作空间；如果后续一个用户有多个工作空间，
+        可以在这里接用户偏好或最近访问记录。
+        """
+
+        default_statement = (
+            select(Workspace)
+            .join(WorkspaceMembership, WorkspaceMembership.workspace_id == Workspace.id)
+            .where(
+                Workspace.tenant_id == tenant_id,
+                Workspace.workspace_key == "default",
+                Workspace.status == "active",
+                WorkspaceMembership.user_id == user_id,
+            )
+        )
+        workspace = self.session.scalar(default_statement)
+        if workspace is not None:
+            return workspace
+        workspaces = self.list_for_user(user_id=user_id, tenant_id=tenant_id)
+        return workspaces[0] if workspaces else None
 
     def set_default_data_source(self, workspace: Workspace, data_source_id: int) -> Workspace:
         """设置工作空间默认数据源。"""

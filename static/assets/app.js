@@ -295,11 +295,28 @@ const el = {
   settingsResetButton: document.querySelector("#settingsResetButton"),
 };
 
-function initializeAuth() {
+async function initializeAuth() {
   const storedSession = readAuthSession();
-  if (storedSession) {
-    applyAuthSession(storedSession, { initializeConsole: true });
-    return;
+  if (storedSession?.accessToken) {
+    try {
+      const me = await fetchJson("/api/auth/me", {
+        headers: buildAuthHeaders(storedSession.accessToken),
+      });
+      const session = normalizeServerAuthSession({
+        ...me,
+        access_token: storedSession.accessToken,
+        expires_in: storedSession.expiresIn,
+      });
+      if (!session) {
+        throw new Error("登录状态内容不完整。");
+      }
+      writeAuthSession(session, storedSession.remember !== false);
+      applyAuthSession(session, { initializeConsole: true });
+      return;
+    } catch (error) {
+      console.warn("Restore auth session failed.", error);
+      clearAuthSession();
+    }
   }
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-required");
@@ -317,24 +334,59 @@ function readAuthSession() {
 }
 
 function normalizeAuthSession(session) {
-  if (!session?.tenantSlug || !session?.displayName) {
+  if (!session?.accessToken || !session?.tenantSlug || !session?.displayName) {
     return null;
   }
   return {
+    accessToken: session.accessToken,
+    tokenType: session.tokenType || "bearer",
+    expiresIn: session.expiresIn || 0,
     tenantSlug: session.tenantSlug,
     tenantName: session.tenantName || session.tenantSlug,
+    tenantId: session.tenantId || null,
+    workspaceId: session.workspaceId || null,
+    workspaceKey: session.workspaceKey || "default",
+    workspaceName: session.workspaceName || session.tenantName || session.tenantSlug,
     displayName: session.displayName,
     account: session.account || "",
     role: session.role || "数据工作台管理员",
+    avatarUrl: session.avatarUrl || "",
     createdAt: session.createdAt || Date.now(),
+    remember: session.remember !== false,
+  };
+}
+
+function normalizeServerAuthSession(payload) {
+  if (!payload?.access_token || !payload?.user || !payload?.tenant || !payload?.workspace) {
+    return null;
+  }
+  return {
+    accessToken: payload.access_token,
+    tokenType: payload.token_type || "bearer",
+    expiresIn: payload.expires_in || 0,
+    tenantId: payload.tenant.id,
+    tenantSlug: payload.tenant.tenant_key,
+    tenantName: payload.tenant.name,
+    workspaceId: payload.workspace.id,
+    workspaceKey: payload.workspace.workspace_key,
+    workspaceName: payload.workspace.name,
+    displayName: payload.user.display_name,
+    account: payload.user.email,
+    role: payload.user.role,
+    avatarUrl: payload.user.avatar_url || "",
+    createdAt: Date.now(),
   };
 }
 
 function writeAuthSession(session, remember = true) {
+  const normalized = normalizeAuthSession({ ...session, remember });
+  if (!normalized) {
+    return;
+  }
   const storage = remember ? localStorage : sessionStorage;
   const otherStorage = remember ? sessionStorage : localStorage;
   otherStorage.removeItem(authStorageKey);
-  storage.setItem(authStorageKey, JSON.stringify(session));
+  storage.setItem(authStorageKey, JSON.stringify(normalized));
 }
 
 function applyAuthSession(session, options = {}) {
@@ -360,14 +412,15 @@ function renderAuthUser() {
     return;
   }
   if (el.tenantStatus) {
-    el.tenantStatus.textContent = `工作空间：${auth.tenantName}`;
-    el.tenantStatus.title = `租户标识：${auth.tenantSlug}`;
+    el.tenantStatus.textContent = `工作空间：${auth.workspaceName}`;
+    el.tenantStatus.title = `租户：${auth.tenantName} / ${auth.tenantSlug}`;
   }
 
   const settings = {
     ...readSettingsDraft(),
     displayName: auth.displayName,
     role: auth.role,
+    avatarDataUrl: auth.avatarUrl || readSettingsDraft().avatarDataUrl,
   };
   renderProfileSettings(settings);
 }
@@ -389,7 +442,7 @@ function setAuthMessage(message, kind = "") {
   el.authMessage.hidden = !message;
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
   const tenantSlug = normalizeTenantSlug(el.loginTenant?.value || "");
   const account = (el.loginAccount?.value || "").trim();
@@ -404,19 +457,29 @@ function handleLogin(event) {
     return;
   }
 
-  const session = {
-    tenantSlug,
-    tenantName: tenantSlug === "demo" ? "示例数据空间" : tenantSlug,
-    displayName: account,
-    account,
-    role: account === "admin" ? "数据工作台管理员" : "数据分析成员",
-    createdAt: Date.now(),
-  };
-  writeAuthSession(session, Boolean(el.rememberSession?.checked));
-  applyAuthSession(session, { initializeConsole: true });
+  setAuthMessage("正在登录...", "ok");
+  try {
+    const payload = await fetchJson("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_key: tenantSlug,
+        account,
+        password,
+      }),
+    });
+    const session = normalizeServerAuthSession(payload);
+    if (!session) {
+      throw new Error("登录响应内容不完整。");
+    }
+    writeAuthSession(session, Boolean(el.rememberSession?.checked));
+    applyAuthSession(session, { initializeConsole: true });
+  } catch (error) {
+    setAuthMessage(error.message || "登录失败，请稍后再试。", "error");
+  }
 }
 
-function handleRegister(event) {
+async function handleRegister(event) {
   event.preventDefault();
   const tenantName = (el.registerTenantName?.value || "").trim();
   const tenantSlug = normalizeTenantSlug(el.registerTenantSlug?.value || "");
@@ -450,19 +513,31 @@ function handleRegister(event) {
     return;
   }
 
-  const session = {
-    tenantSlug,
-    tenantName,
-    displayName,
-    account,
-    role: "租户管理员",
-    createdAt: Date.now(),
-  };
-  writeAuthSession(session, true);
-  applyAuthSession(session, { initializeConsole: true });
+  setAuthMessage("正在创建工作空间...", "ok");
+  try {
+    const payload = await fetchJson("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_name: tenantName,
+        tenant_key: tenantSlug,
+        display_name: displayName,
+        email: account,
+        password,
+      }),
+    });
+    const session = normalizeServerAuthSession(payload);
+    if (!session) {
+      throw new Error("注册响应内容不完整。");
+    }
+    writeAuthSession(session, true);
+    applyAuthSession(session, { initializeConsole: true });
+  } catch (error) {
+    setAuthMessage(error.message || "创建失败，请稍后再试。", "error");
+  }
 }
 
-function handleForgotPassword(event) {
+async function handleForgotPassword(event) {
   event.preventDefault();
   const tenantSlug = normalizeTenantSlug(el.forgotTenant?.value || "");
   const email = (el.forgotEmail?.value || "").trim();
@@ -474,10 +549,31 @@ function handleForgotPassword(event) {
     setAuthMessage("请输入有效的账号邮箱。", "error");
     return;
   }
-  setAuthMessage("重置申请已提交。", "ok");
+  try {
+    const payload = await fetchJson("/api/auth/password-reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_key: tenantSlug,
+        email,
+      }),
+    });
+    setAuthMessage(payload.message || "重置申请已提交。", "ok");
+  } catch (error) {
+    setAuthMessage(error.message || "提交失败，请稍后再试。", "error");
+  }
 }
 
-function logout() {
+async function logout() {
+  try {
+    await fetchJson("/api/auth/logout", { method: "POST" });
+  } catch (error) {
+    console.warn("Logout request failed.", error);
+  }
+  clearAuthSession();
+}
+
+function clearAuthSession() {
   localStorage.removeItem(authStorageKey);
   sessionStorage.removeItem(authStorageKey);
   state.auth = null;
@@ -537,8 +633,16 @@ function setFileState(category, label, kind = "") {
   zone.classList.toggle("is-ok", kind === "ok");
 }
 
-async function fetchJson(url, options) {
-  const response = await fetch(url, options);
+function buildAuthHeaders(token = state.auth?.accessToken) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function fetchJson(url, options = {}) {
+  const headers = {
+    ...buildAuthHeaders(),
+    ...(options.headers || {}),
+  };
+  const response = await fetch(url, { ...options, headers });
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
