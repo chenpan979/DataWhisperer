@@ -142,7 +142,6 @@ const fileManagers = {
 const el = {
   authShell: document.querySelector("#authShell"),
   authModeButtons: document.querySelectorAll("[data-auth-mode]"),
-  authTabs: document.querySelectorAll(".auth-mode-nav [data-auth-mode]"),
   authForms: document.querySelectorAll("[data-auth-panel]"),
   authMessage: document.querySelector("#authMessage"),
   loginForm: document.querySelector("#loginForm"),
@@ -375,9 +374,6 @@ function renderAuthUser() {
 
 function switchAuthMode(mode) {
   const nextMode = ["login", "register", "forgot"].includes(mode) ? mode : "login";
-  el.authTabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.authMode === nextMode);
-  });
   el.authForms.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.authPanel === nextMode);
   });
@@ -430,7 +426,7 @@ function handleRegister(event) {
   const confirmPassword = el.registerConfirmPassword?.value || "";
 
   if (!tenantName || !tenantSlug || !displayName || !account || !password || !confirmPassword) {
-    setAuthMessage("请完整填写组织、管理员和密码信息。", "error");
+    setAuthMessage("请完整填写注册信息。", "error");
     return;
   }
   if (!/^[a-z0-9-]{3,32}$/.test(tenantSlug)) {
@@ -442,7 +438,7 @@ function handleRegister(event) {
     return;
   }
   if (password.length < 8) {
-    setAuthMessage("密码至少需要 8 位，后续会接入更严格的密码策略。", "error");
+    setAuthMessage("密码至少需要 8 位。", "error");
     return;
   }
   if (password !== confirmPassword) {
@@ -450,7 +446,7 @@ function handleRegister(event) {
     return;
   }
   if (!el.registerAgreement?.checked) {
-    setAuthMessage("请先确认演示租户说明。", "error");
+    setAuthMessage("请确认创建工作空间。", "error");
     return;
   }
 
@@ -478,7 +474,7 @@ function handleForgotPassword(event) {
     setAuthMessage("请输入有效的账号邮箱。", "error");
     return;
   }
-  setAuthMessage("重置指引已生成。后续接入后端后，这里会发送邮件验证码或管理员重置流程。", "ok");
+  setAuthMessage("重置申请已提交。", "ok");
 }
 
 function logout() {

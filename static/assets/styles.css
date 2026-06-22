@@ -216,9 +216,6 @@ body.authenticated .auth-shell {
 .auth-card-top {
   align-items: flex-start;
   border-bottom: 1px solid #edf2f0;
-  display: flex;
-  gap: 18px;
-  justify-content: space-between;
   margin-bottom: 28px;
   padding-bottom: 18px;
 }
@@ -239,44 +236,6 @@ body.authenticated .auth-shell {
   color: #071f3a;
   font-size: 20px;
   line-height: 1.25;
-}
-
-.auth-mode-nav {
-  align-items: center;
-  display: flex;
-  flex: 0 0 auto;
-  gap: 18px;
-  padding-top: 2px;
-}
-
-.auth-mode-nav button {
-  background: transparent;
-  border: 0;
-  color: #6a7973;
-  font-weight: 750;
-  height: 30px;
-  padding: 0;
-  position: relative;
-  white-space: nowrap;
-}
-
-.auth-mode-nav button:hover {
-  color: var(--accent);
-}
-
-.auth-mode-nav button.active {
-  color: var(--accent-strong);
-}
-
-.auth-mode-nav button.active::after {
-  background: linear-gradient(90deg, var(--accent), #14b8a6);
-  border-radius: 999px;
-  bottom: 0;
-  content: "";
-  height: 2px;
-  left: 0;
-  position: absolute;
-  right: 0;
 }
 
 .auth-form {
@@ -4196,17 +4155,6 @@ td {
     width: 100%;
   }
 
-  .auth-card-top {
-    flex-direction: column;
-  }
-
-  .auth-mode-nav {
-    border-top: 1px solid #edf2f0;
-    justify-content: space-between;
-    padding-top: 12px;
-    width: 100%;
-  }
-
   .topbar {
     align-items: flex-start;
     height: auto;
@@ -4362,10 +4310,6 @@ td {
 
   .auth-field-grid {
     grid-template-columns: 1fr;
-  }
-
-  .auth-mode-nav button {
-    font-size: 13px;
   }
 
   .topbar {

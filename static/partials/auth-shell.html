@@ -12,8 +12,7 @@
       <span class="auth-eyebrow">企业级 Text-to-SQL 工作台</span>
       <h1>让每个团队，都能用对话方式安全查数。</h1>
       <p>
-        面向多租户场景预留工作空间、用户身份和安全边界。当前版本先完成前端登录体验，
-        后续可以平滑接入真实账号中心、租户隔离和权限控制。
+        为团队提供独立工作空间、用户身份和安全边界，让数据分析从登录开始就清晰可信。
       </p>
     </div>
 
@@ -26,7 +25,7 @@
       <article>
         <svg><use href="#icon-shield"></use></svg>
         <strong>安全边界</strong>
-        <span>默认只读 SQL，后续可按角色控制数据访问范围。</span>
+        <span>默认只读 SQL，按角色管理数据访问范围。</span>
       </article>
       <article>
         <svg><use href="#icon-sparkle"></use></svg>
@@ -39,21 +38,15 @@
   <div class="auth-card" id="authCard">
     <div class="auth-card-top">
       <div>
-        <span>账号中心</span>
-        <strong>安全访问工作台</strong>
-      </div>
-      <div class="auth-mode-nav" role="tablist" aria-label="账号入口">
-        <button class="active" type="button" data-auth-mode="login">账号登录</button>
-        <button type="button" data-auth-mode="register">创建空间</button>
-        <button type="button" data-auth-mode="forgot">找回密码</button>
+        <span>欢迎回来</span>
+        <strong>安全访问 DataWhisperer</strong>
       </div>
     </div>
 
-    <form class="auth-form active" id="loginForm" data-auth-panel="login">
+    <form class="auth-form active" id="loginForm" data-auth-panel="login" novalidate>
       <div class="auth-form-head">
-        <span>欢迎回来</span>
         <h2>登录你的数据工作空间</h2>
-        <p>当前为前端演示登录，后续会替换为真实多租户账号接口。</p>
+        <p>使用工作空间、账号和密码进入控制台。</p>
       </div>
       <label class="auth-field">
         <span>工作空间 / 租户标识</span>
@@ -83,11 +76,11 @@
       </p>
     </form>
 
-    <form class="auth-form" id="registerForm" data-auth-panel="register">
+    <form class="auth-form" id="registerForm" data-auth-panel="register" novalidate>
       <div class="auth-form-head">
         <span>创建组织</span>
-        <h2>注册新的租户空间</h2>
-        <p>先把租户、管理员和默认工作空间信息收集起来，方便后续接入账号服务。</p>
+        <h2>创建新的工作空间</h2>
+        <p>填写团队与管理员信息。</p>
       </div>
       <div class="auth-field-grid">
         <label class="auth-field">
@@ -105,7 +98,7 @@
       </label>
       <label class="auth-field">
         <span>工作邮箱</span>
-        <input id="registerEmail" type="email" placeholder="name@company.com" autocomplete="email" />
+        <input id="registerEmail" type="text" inputmode="email" placeholder="name@company.com" autocomplete="email" />
       </label>
       <div class="auth-field-grid">
         <label class="auth-field">
@@ -119,7 +112,7 @@
       </div>
       <label class="auth-agreement">
         <input id="registerAgreement" type="checkbox" />
-        <span>我确认当前创建的是演示租户，后续可接入真实账号、组织和权限服务。</span>
+        <span>我已确认创建该工作空间。</span>
       </label>
       <button class="auth-submit-button" type="submit">
         <span>创建并进入</span>
@@ -130,11 +123,11 @@
       </p>
     </form>
 
-    <form class="auth-form" id="forgotForm" data-auth-panel="forgot">
+    <form class="auth-form" id="forgotForm" data-auth-panel="forgot" novalidate>
       <div class="auth-form-head">
         <span>账号恢复</span>
-        <h2>找回工作空间密码</h2>
-        <p>填写租户标识和账号邮箱。当前先展示前端流程，后续接入邮件验证码或管理员重置。</p>
+        <h2>找回密码</h2>
+        <p>输入工作空间和账号邮箱。</p>
       </div>
       <label class="auth-field">
         <span>工作空间 / 租户标识</span>
@@ -142,7 +135,7 @@
       </label>
       <label class="auth-field">
         <span>账号邮箱</span>
-        <input id="forgotEmail" type="email" placeholder="name@company.com" autocomplete="email" />
+        <input id="forgotEmail" type="text" inputmode="email" placeholder="name@company.com" autocomplete="email" />
       </label>
       <button class="auth-submit-button" type="submit">
         <span>发送重置指引</span>
