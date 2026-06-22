@@ -37,10 +37,16 @@
   </div>
 
   <div class="auth-card" id="authCard">
-    <div class="auth-tabs" role="tablist" aria-label="账号入口">
-      <button class="active" type="button" data-auth-mode="login">登录</button>
-      <button type="button" data-auth-mode="register">注册</button>
-      <button type="button" data-auth-mode="forgot">忘记密码</button>
+    <div class="auth-card-top">
+      <div>
+        <span>账号中心</span>
+        <strong>安全访问工作台</strong>
+      </div>
+      <div class="auth-mode-nav" role="tablist" aria-label="账号入口">
+        <button class="active" type="button" data-auth-mode="login">账号登录</button>
+        <button type="button" data-auth-mode="register">创建空间</button>
+        <button type="button" data-auth-mode="forgot">找回密码</button>
+      </div>
     </div>
 
     <form class="auth-form active" id="loginForm" data-auth-panel="login">
@@ -72,6 +78,9 @@
         <span>进入工作台</span>
         <svg><use href="#icon-send"></use></svg>
       </button>
+      <p class="auth-form-foot">
+        没有空间？<button class="link-button" type="button" data-auth-mode="register">创建新的租户空间</button>
+      </p>
     </form>
 
     <form class="auth-form" id="registerForm" data-auth-panel="register">
@@ -116,6 +125,9 @@
         <span>创建并进入</span>
         <svg><use href="#icon-check"></use></svg>
       </button>
+      <p class="auth-form-foot">
+        已有空间？<button class="link-button" type="button" data-auth-mode="login">返回登录</button>
+      </p>
     </form>
 
     <form class="auth-form" id="forgotForm" data-auth-panel="forgot">
@@ -136,6 +148,9 @@
         <span>发送重置指引</span>
         <svg><use href="#icon-send"></use></svg>
       </button>
+      <p class="auth-form-foot">
+        想起密码了？<button class="link-button" type="button" data-auth-mode="login">返回登录</button>
+      </p>
     </form>
 
     <div class="auth-message" id="authMessage" role="status" aria-live="polite"></div>

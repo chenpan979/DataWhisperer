@@ -142,7 +142,7 @@ const fileManagers = {
 const el = {
   authShell: document.querySelector("#authShell"),
   authModeButtons: document.querySelectorAll("[data-auth-mode]"),
-  authTabs: document.querySelectorAll(".auth-tabs [data-auth-mode]"),
+  authTabs: document.querySelectorAll(".auth-mode-nav [data-auth-mode]"),
   authForms: document.querySelectorAll("[data-auth-panel]"),
   authMessage: document.querySelector("#authMessage"),
   loginForm: document.querySelector("#loginForm"),
