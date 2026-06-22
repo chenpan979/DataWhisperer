@@ -4468,20 +4468,20 @@ td {
 
 /* V3.10.12: 系统设置页，承接后续配置中心、租户和安全策略能力。 */
 .settings-workspace {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
-  overflow-y: auto;
-  padding: 28px clamp(24px, 4vw, 52px) 40px;
+  overflow: hidden;
+  padding: 0;
 }
 
 .settings-head {
   align-items: flex-start;
   background: transparent;
   border: 0;
-  padding: 0;
+  border-bottom: 1px solid #d7e5e1;
+  padding: 28px clamp(24px, 4vw, 52px) 18px;
 }
 
 .settings-head-actions {
@@ -4538,9 +4538,7 @@ td {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 0 0 0 2px;
-  position: sticky;
-  top: 0;
+  padding: 0 clamp(24px, 4vw, 52px);
   z-index: 12;
 }
 
@@ -4579,6 +4577,10 @@ td {
 }
 
 .settings-tab-panels {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px clamp(24px, 4vw, 52px) 40px;
+  scrollbar-gutter: stable;
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -4905,7 +4907,19 @@ td {
 
 @media (max-width: 760px) {
   .settings-workspace {
-    padding: 20px 16px 28px;
+    padding: 0;
+  }
+
+  .settings-head {
+    padding: 20px 16px 14px;
+  }
+
+  .settings-tabs {
+    padding: 0 16px;
+  }
+
+  .settings-tab-panels {
+    padding: 16px 16px 28px;
   }
 
   .settings-head,

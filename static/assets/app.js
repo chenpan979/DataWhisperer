@@ -2143,9 +2143,9 @@ function switchSettingsTab(tabName) {
   el.settingsTabPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.settingsPanel === tabName);
   });
-  const settingsWorkspace = document.querySelector(".settings-workspace");
-  if (settingsWorkspace) {
-    settingsWorkspace.scrollTo({
+  const settingsContent = document.querySelector(".settings-tab-panels");
+  if (settingsContent) {
+    settingsContent.scrollTo({
       top: 0,
       behavior: "smooth",
     });
