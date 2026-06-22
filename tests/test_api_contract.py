@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
@@ -45,3 +47,26 @@ def test_console_static_fragments_are_served() -> None:
         response = client.get(path)
         assert response.status_code == 200
         assert response.text.strip()
+
+
+def test_product_schema_migration_script_contains_core_tables() -> None:
+    script_path = Path("scripts/init_product_schema.sql")
+    sql = script_path.read_text(encoding="utf-8").lower()
+
+    assert "create database if not exists datawhisperer_product" in sql
+    for table_name in [
+        "tenants",
+        "users",
+        "tenant_memberships",
+        "workspaces",
+        "data_sources",
+        "data_source_credentials",
+        "schema_tables",
+        "schema_columns",
+        "schema_relationships",
+        "conversations",
+        "chat_messages",
+        "analysis_runs",
+        "audit_logs",
+    ]:
+        assert f"create table if not exists {table_name}" in sql
