@@ -3,6 +3,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from app.main import create_app  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
 
 def test_app_routes_exist() -> None:
@@ -24,3 +25,18 @@ def test_app_routes_exist() -> None:
     assert "/api/evaluations/run" in paths
     assert "/api/evaluations/datasets" in paths
     assert "/api/evaluations/datasets/{file_id}/preview" in paths
+
+
+def test_console_static_fragments_are_served() -> None:
+    client = TestClient(create_app())
+
+    index_response = client.get("/")
+    assert index_response.status_code == 200
+    assert "/static/assets/bootstrap.js" in index_response.text
+    assert "/static/partials/icon-sprite.html" in index_response.text
+    assert "/static/partials/app-shell.html" in index_response.text
+
+    for path in ["/static/partials/icon-sprite.html", "/static/partials/app-shell.html"]:
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.text.strip()

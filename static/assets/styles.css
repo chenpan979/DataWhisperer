@@ -1687,6 +1687,24 @@ td {
   color: #27322e;
 }
 
+.bootstrap-error {
+  color: #0f172a;
+  margin: 80px auto;
+  max-width: 520px;
+  padding: 24px;
+}
+
+.bootstrap-error h1 {
+  font-size: 22px;
+  margin: 0 0 12px;
+}
+
+.bootstrap-error p {
+  color: #64748b;
+  line-height: 1.6;
+  margin: 0;
+}
+
 .code-toolbar {
   align-items: center;
   display: flex;
