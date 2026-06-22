@@ -147,6 +147,25 @@ def test_chat_conversation_lifecycle(
     assert patch_turn_response.status_code == 200
     assert any(turn["traceId"] == "trace-test-002" for turn in patch_turn_response.json()["turns"])
 
+    relogin_response = client.post(
+        "/api/auth/login",
+        json={"tenant_key": "chat-test", "account": "tester@example.com", "password": "12345678"},
+    )
+    assert relogin_response.status_code == 200
+    relogin_headers = {"Authorization": f"Bearer {relogin_response.json()['access_token']}"}
+    relogin_list_response = client.get("/api/chat/conversations", headers=relogin_headers)
+    assert relogin_list_response.status_code == 200
+    relogin_conversation = next(
+        item
+        for item in relogin_list_response.json()["conversations"]
+        if item["id"] == conversation_id
+    )
+    assert [turn["traceId"] for turn in relogin_conversation["turns"]] == [
+        "trace-test-001",
+        "trace-test-002",
+    ]
+    assert relogin_conversation["turns"][0]["assistantHtml"] == saved_turn["assistantHtml"]
+
     with session_factory() as session:
         run = AnalysisRunRepository(session).get_by_trace_id("trace-test-001")
         assert run is not None

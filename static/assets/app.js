@@ -22,6 +22,7 @@ const state = {
   pendingDeleteConversationId: null,
   auth: null,
   consoleBootstrapped: false,
+  conversationLoadPromise: null,
   historyChartOptions: new Map(),
   historyChartInstances: [],
   historyChartRetryCount: 0,
@@ -580,6 +581,7 @@ function clearAuthSession() {
   state.consoleBootstrapped = false;
   state.conversations = [];
   state.activeConversationId = null;
+  state.conversationLoadPromise = null;
   state.lastResponse = null;
   document.body.classList.remove("authenticated");
   document.body.classList.add("auth-required");
@@ -599,11 +601,11 @@ function isValidEmail(value) {
 }
 
 function initializeConsoleData() {
+  state.conversationLoadPromise = loadConversations();
   if (state.consoleBootstrapped) {
     return;
   }
   state.consoleBootstrapped = true;
-  loadConversations();
   checkHealth();
   loadExamples();
   renderProcessTimeline([]);
@@ -1188,6 +1190,7 @@ async function runAnalysis() {
     return;
   }
 
+  await ensureConversationReady();
   archiveCurrentTurn();
   setRunState("分析中", "");
   el.runButton.disabled = true;
@@ -1203,7 +1206,7 @@ async function runAnalysis() {
       body: JSON.stringify({ question, max_rows: maxRows }),
     });
     state.lastResponse = data;
-    renderResponse(data);
+    await renderResponse(data);
     setRunState("完成", "ok");
   } catch (error) {
     el.assistantResultMessage.classList.remove("is-loading");
@@ -1220,7 +1223,7 @@ async function runAnalysis() {
   }
 }
 
-function renderResponse(data) {
+async function renderResponse(data) {
   el.assistantResultMessage.classList.remove("is-loading");
   el.metricRows.textContent = data.rows.length;
   el.metricColumns.textContent = data.columns.length;
@@ -1236,7 +1239,7 @@ function renderResponse(data) {
   renderChart(data.chart, data.rows);
   typeInsight(data.insight || "暂无分析结论。");
   renderFollowups(generateFollowupQuestions(data));
-  saveConversationTurn(data);
+  await saveConversationTurn(data);
   scrollChatToBottom();
 }
 
@@ -1379,7 +1382,7 @@ function cloneAsHistoryNode(source) {
   return clone;
 }
 
-function saveConversationTurn(data) {
+async function saveConversationTurn(data) {
   const conversation = ensureActiveConversation();
   const exists = conversation.turns.some((turn) => turn.traceId === data.trace_id);
   let nextTurn = null;
@@ -1408,10 +1411,10 @@ function saveConversationTurn(data) {
   conversation.updatedAt = Date.now();
   renderConversationList();
   if (nextTurn) {
-    persistConversationTurn(conversation, nextTurn);
-  } else {
-    persistConversationMeta(conversation);
+    await persistConversationTurn(conversation, nextTurn);
+    return;
   }
+  await persistConversationMeta(conversation);
 }
 
 function renderConversationTurns(conversation) {
@@ -4198,10 +4201,16 @@ async function persistConversationMeta(conversation) {
         turns: conversation.turns,
       }),
     });
-    replaceConversation(updated);
+    const merged = {
+      ...updated,
+      turns: (updated.turns?.length || 0) >= (conversation.turns?.length || 0) ? updated.turns : conversation.turns,
+    };
+    replaceConversation(merged);
     renderConversationList();
+    return merged;
   } catch (error) {
     console.warn("Persist conversation failed.", error);
+    return null;
   }
 }
 
@@ -4214,8 +4223,10 @@ async function persistConversationTurn(conversation, turn) {
     });
     replaceConversation(updated);
     renderConversationList();
+    return updated;
   } catch (error) {
     console.warn("Persist conversation turn failed.", error);
+    return null;
   }
 }
 
@@ -4239,6 +4250,15 @@ function ensureActiveConversation() {
     conversation = createConversation();
   }
   return conversation;
+}
+
+async function ensureConversationReady() {
+  if (state.conversationLoadPromise) {
+    await state.conversationLoadPromise;
+  }
+  if (!getActiveConversation()) {
+    await startNewConversation({ silent: true });
+  }
 }
 
 function makeConversationTitle(question) {
