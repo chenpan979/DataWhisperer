@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="mysql+pymysql://root:password@127.0.0.1:3306/datawhisperer_demo?charset=utf8mb4"
     )
+    product_database_url: str = Field(
+        default="mysql+pymysql://root:password@127.0.0.1:3306/datawhisperer_product?charset=utf8mb4"
+    )
     query_timeout_seconds: int = 20
     max_query_rows: int = 100
 
