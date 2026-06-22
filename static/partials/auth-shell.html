@@ -1,0 +1,143 @@
+<section class="auth-shell" id="authShell" aria-label="账号登录">
+  <div class="auth-brand-panel">
+    <div class="auth-logo-row">
+      <div class="brand-mark large">DW</div>
+      <div>
+        <strong>DataWhisperer</strong>
+        <span>多租户自然语言数据分析平台</span>
+      </div>
+    </div>
+
+    <div class="auth-hero-copy">
+      <span class="auth-eyebrow">企业级 Text-to-SQL 工作台</span>
+      <h1>让每个团队，都能用对话方式安全查数。</h1>
+      <p>
+        面向多租户场景预留工作空间、用户身份和安全边界。当前版本先完成前端登录体验，
+        后续可以平滑接入真实账号中心、租户隔离和权限控制。
+      </p>
+    </div>
+
+    <div class="auth-feature-grid" aria-label="产品能力">
+      <article>
+        <svg><use href="#icon-database"></use></svg>
+        <strong>租户级数据源</strong>
+        <span>每个工作空间独立管理数据库、知识库和评测集。</span>
+      </article>
+      <article>
+        <svg><use href="#icon-shield"></use></svg>
+        <strong>安全边界</strong>
+        <span>默认只读 SQL，后续可按角色控制数据访问范围。</span>
+      </article>
+      <article>
+        <svg><use href="#icon-sparkle"></use></svg>
+        <strong>AI 分析体验</strong>
+        <span>自然语言提问，自动生成 SQL、图表和业务结论。</span>
+      </article>
+    </div>
+  </div>
+
+  <div class="auth-card" id="authCard">
+    <div class="auth-tabs" role="tablist" aria-label="账号入口">
+      <button class="active" type="button" data-auth-mode="login">登录</button>
+      <button type="button" data-auth-mode="register">注册</button>
+      <button type="button" data-auth-mode="forgot">忘记密码</button>
+    </div>
+
+    <form class="auth-form active" id="loginForm" data-auth-panel="login">
+      <div class="auth-form-head">
+        <span>欢迎回来</span>
+        <h2>登录你的数据工作空间</h2>
+        <p>当前为前端演示登录，后续会替换为真实多租户账号接口。</p>
+      </div>
+      <label class="auth-field">
+        <span>工作空间 / 租户标识</span>
+        <input id="loginTenant" type="text" value="demo" autocomplete="organization" />
+      </label>
+      <label class="auth-field">
+        <span>账号</span>
+        <input id="loginAccount" type="text" value="admin" autocomplete="username" />
+      </label>
+      <label class="auth-field">
+        <span>密码</span>
+        <input id="loginPassword" type="password" value="12345678" autocomplete="current-password" />
+      </label>
+      <div class="auth-options">
+        <label>
+          <input id="rememberSession" type="checkbox" checked />
+          <span>记住登录状态</span>
+        </label>
+        <button class="link-button" type="button" data-auth-mode="forgot">找回密码</button>
+      </div>
+      <button class="auth-submit-button" type="submit">
+        <span>进入工作台</span>
+        <svg><use href="#icon-send"></use></svg>
+      </button>
+    </form>
+
+    <form class="auth-form" id="registerForm" data-auth-panel="register">
+      <div class="auth-form-head">
+        <span>创建组织</span>
+        <h2>注册新的租户空间</h2>
+        <p>先把租户、管理员和默认工作空间信息收集起来，方便后续接入账号服务。</p>
+      </div>
+      <div class="auth-field-grid">
+        <label class="auth-field">
+          <span>公司 / 团队名称</span>
+          <input id="registerTenantName" type="text" placeholder="例如：星河零售数据团队" autocomplete="organization" />
+        </label>
+        <label class="auth-field">
+          <span>租户标识</span>
+          <input id="registerTenantSlug" type="text" placeholder="例如：galaxy-retail" autocomplete="off" />
+        </label>
+      </div>
+      <label class="auth-field">
+        <span>管理员姓名</span>
+        <input id="registerName" type="text" placeholder="例如：admin" autocomplete="name" />
+      </label>
+      <label class="auth-field">
+        <span>工作邮箱</span>
+        <input id="registerEmail" type="email" placeholder="name@company.com" autocomplete="email" />
+      </label>
+      <div class="auth-field-grid">
+        <label class="auth-field">
+          <span>密码</span>
+          <input id="registerPassword" type="password" autocomplete="new-password" />
+        </label>
+        <label class="auth-field">
+          <span>确认密码</span>
+          <input id="registerConfirmPassword" type="password" autocomplete="new-password" />
+        </label>
+      </div>
+      <label class="auth-agreement">
+        <input id="registerAgreement" type="checkbox" />
+        <span>我确认当前创建的是演示租户，后续可接入真实账号、组织和权限服务。</span>
+      </label>
+      <button class="auth-submit-button" type="submit">
+        <span>创建并进入</span>
+        <svg><use href="#icon-check"></use></svg>
+      </button>
+    </form>
+
+    <form class="auth-form" id="forgotForm" data-auth-panel="forgot">
+      <div class="auth-form-head">
+        <span>账号恢复</span>
+        <h2>找回工作空间密码</h2>
+        <p>填写租户标识和账号邮箱。当前先展示前端流程，后续接入邮件验证码或管理员重置。</p>
+      </div>
+      <label class="auth-field">
+        <span>工作空间 / 租户标识</span>
+        <input id="forgotTenant" type="text" placeholder="demo" autocomplete="organization" />
+      </label>
+      <label class="auth-field">
+        <span>账号邮箱</span>
+        <input id="forgotEmail" type="email" placeholder="name@company.com" autocomplete="email" />
+      </label>
+      <button class="auth-submit-button" type="submit">
+        <span>发送重置指引</span>
+        <svg><use href="#icon-send"></use></svg>
+      </button>
+    </form>
+
+    <div class="auth-message" id="authMessage" role="status" aria-live="polite"></div>
+  </div>
+</section>

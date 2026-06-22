@@ -1,4 +1,4 @@
-const appVersion = "3.11.15";
+const appVersion = "3.12.0";
 
 async function loadFragment(mountNode) {
   const fragmentUrl = mountNode.dataset.fragment;

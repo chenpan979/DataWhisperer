@@ -34,9 +34,14 @@ def test_console_static_fragments_are_served() -> None:
     assert index_response.status_code == 200
     assert "/static/assets/bootstrap.js" in index_response.text
     assert "/static/partials/icon-sprite.html" in index_response.text
+    assert "/static/partials/auth-shell.html" in index_response.text
     assert "/static/partials/app-shell.html" in index_response.text
 
-    for path in ["/static/partials/icon-sprite.html", "/static/partials/app-shell.html"]:
+    for path in [
+        "/static/partials/icon-sprite.html",
+        "/static/partials/auth-shell.html",
+        "/static/partials/app-shell.html",
+    ]:
         response = client.get(path)
         assert response.status_code == 200
         assert response.text.strip()

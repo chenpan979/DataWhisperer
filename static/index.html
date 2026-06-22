@@ -4,13 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DataWhisperer Console</title>
-    <link rel="stylesheet" href="/static/assets/styles.css?v=3.11.15" />
+    <link rel="stylesheet" href="/static/assets/styles.css?v=3.12.0" />
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script type="module" src="/static/assets/bootstrap.js?v=3.11.15"></script>
+    <script type="module" src="/static/assets/bootstrap.js?v=3.12.0"></script>
   </head>
-  <body>
+  <body class="auth-required">
     <div id="iconSpriteMount" data-fragment="/static/partials/icon-sprite.html"></div>
+    <div id="authShellMount" data-fragment="/static/partials/auth-shell.html"></div>
     <div id="appShellMount" data-fragment="/static/partials/app-shell.html"></div>
   </body>
 </html>

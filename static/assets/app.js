@@ -20,6 +20,8 @@ const state = {
   conversationSerial: 0,
   renamingConversationId: null,
   pendingDeleteConversationId: null,
+  auth: null,
+  consoleBootstrapped: false,
   historyChartOptions: new Map(),
   historyChartInstances: [],
   historyChartRetryCount: 0,
@@ -31,6 +33,7 @@ const state = {
 };
 
 const settingsStorageKey = "datawhisperer.systemSettings.v1";
+const authStorageKey = "datawhisperer.authSession.v1";
 
 const defaultSettings = {
   datasourceName: "示例 MySQL 库",
@@ -137,6 +140,29 @@ const fileManagers = {
 };
 
 const el = {
+  authShell: document.querySelector("#authShell"),
+  authModeButtons: document.querySelectorAll("[data-auth-mode]"),
+  authTabs: document.querySelectorAll(".auth-tabs [data-auth-mode]"),
+  authForms: document.querySelectorAll("[data-auth-panel]"),
+  authMessage: document.querySelector("#authMessage"),
+  loginForm: document.querySelector("#loginForm"),
+  loginTenant: document.querySelector("#loginTenant"),
+  loginAccount: document.querySelector("#loginAccount"),
+  loginPassword: document.querySelector("#loginPassword"),
+  rememberSession: document.querySelector("#rememberSession"),
+  registerForm: document.querySelector("#registerForm"),
+  registerTenantName: document.querySelector("#registerTenantName"),
+  registerTenantSlug: document.querySelector("#registerTenantSlug"),
+  registerName: document.querySelector("#registerName"),
+  registerEmail: document.querySelector("#registerEmail"),
+  registerPassword: document.querySelector("#registerPassword"),
+  registerConfirmPassword: document.querySelector("#registerConfirmPassword"),
+  registerAgreement: document.querySelector("#registerAgreement"),
+  forgotForm: document.querySelector("#forgotForm"),
+  forgotTenant: document.querySelector("#forgotTenant"),
+  forgotEmail: document.querySelector("#forgotEmail"),
+  tenantStatus: document.querySelector("#tenantStatus"),
+  logoutButton: document.querySelector("#logoutButton"),
   healthStatus: document.querySelector("#healthStatus"),
   newConversationButton: document.querySelector("#newConversationButton"),
   clearConversationButton: document.querySelector("#clearConversationButton"),
@@ -269,6 +295,230 @@ const el = {
   settingsSaveProfileButton: document.querySelector("#settingsSaveProfileButton"),
   settingsResetButton: document.querySelector("#settingsResetButton"),
 };
+
+function initializeAuth() {
+  const storedSession = readAuthSession();
+  if (storedSession) {
+    applyAuthSession(storedSession, { initializeConsole: true });
+    return;
+  }
+  document.body.classList.remove("authenticated");
+  document.body.classList.add("auth-required");
+  switchAuthMode("login");
+}
+
+function readAuthSession() {
+  try {
+    const rawSession = localStorage.getItem(authStorageKey) || sessionStorage.getItem(authStorageKey);
+    return rawSession ? normalizeAuthSession(JSON.parse(rawSession)) : null;
+  } catch (error) {
+    console.warn("Read auth session failed.", error);
+    return null;
+  }
+}
+
+function normalizeAuthSession(session) {
+  if (!session?.tenantSlug || !session?.displayName) {
+    return null;
+  }
+  return {
+    tenantSlug: session.tenantSlug,
+    tenantName: session.tenantName || session.tenantSlug,
+    displayName: session.displayName,
+    account: session.account || "",
+    role: session.role || "数据工作台管理员",
+    createdAt: session.createdAt || Date.now(),
+  };
+}
+
+function writeAuthSession(session, remember = true) {
+  const storage = remember ? localStorage : sessionStorage;
+  const otherStorage = remember ? sessionStorage : localStorage;
+  otherStorage.removeItem(authStorageKey);
+  storage.setItem(authStorageKey, JSON.stringify(session));
+}
+
+function applyAuthSession(session, options = {}) {
+  state.auth = normalizeAuthSession(session);
+  if (!state.auth) {
+    initializeAuth();
+    return;
+  }
+
+  document.body.classList.add("authenticated");
+  document.body.classList.remove("auth-required");
+  renderAuthUser();
+  setAuthMessage("", "");
+
+  if (options.initializeConsole) {
+    initializeConsoleData();
+  }
+}
+
+function renderAuthUser() {
+  const auth = state.auth;
+  if (!auth) {
+    return;
+  }
+  if (el.tenantStatus) {
+    el.tenantStatus.textContent = `工作空间：${auth.tenantName}`;
+    el.tenantStatus.title = `租户标识：${auth.tenantSlug}`;
+  }
+
+  const settings = {
+    ...readSettingsDraft(),
+    displayName: auth.displayName,
+    role: auth.role,
+  };
+  renderProfileSettings(settings);
+}
+
+function switchAuthMode(mode) {
+  const nextMode = ["login", "register", "forgot"].includes(mode) ? mode : "login";
+  el.authTabs.forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.authMode === nextMode);
+  });
+  el.authForms.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.authPanel === nextMode);
+  });
+  setAuthMessage("", "");
+}
+
+function setAuthMessage(message, kind = "") {
+  if (!el.authMessage) {
+    return;
+  }
+  el.authMessage.textContent = message;
+  el.authMessage.className = `auth-message ${kind}`;
+  el.authMessage.hidden = !message;
+}
+
+function handleLogin(event) {
+  event.preventDefault();
+  const tenantSlug = normalizeTenantSlug(el.loginTenant?.value || "");
+  const account = (el.loginAccount?.value || "").trim();
+  const password = el.loginPassword?.value || "";
+
+  if (!tenantSlug || !account || !password) {
+    setAuthMessage("请填写工作空间、账号和密码。", "error");
+    return;
+  }
+  if (password.length < 6) {
+    setAuthMessage("密码至少需要 6 位。", "error");
+    return;
+  }
+
+  const session = {
+    tenantSlug,
+    tenantName: tenantSlug === "demo" ? "示例数据空间" : tenantSlug,
+    displayName: account,
+    account,
+    role: account === "admin" ? "数据工作台管理员" : "数据分析成员",
+    createdAt: Date.now(),
+  };
+  writeAuthSession(session, Boolean(el.rememberSession?.checked));
+  applyAuthSession(session, { initializeConsole: true });
+}
+
+function handleRegister(event) {
+  event.preventDefault();
+  const tenantName = (el.registerTenantName?.value || "").trim();
+  const tenantSlug = normalizeTenantSlug(el.registerTenantSlug?.value || "");
+  const displayName = (el.registerName?.value || "").trim();
+  const account = (el.registerEmail?.value || "").trim();
+  const password = el.registerPassword?.value || "";
+  const confirmPassword = el.registerConfirmPassword?.value || "";
+
+  if (!tenantName || !tenantSlug || !displayName || !account || !password || !confirmPassword) {
+    setAuthMessage("请完整填写组织、管理员和密码信息。", "error");
+    return;
+  }
+  if (!/^[a-z0-9-]{3,32}$/.test(tenantSlug)) {
+    setAuthMessage("租户标识只支持 3-32 位小写字母、数字和短横线。", "error");
+    return;
+  }
+  if (!isValidEmail(account)) {
+    setAuthMessage("请输入有效的工作邮箱。", "error");
+    return;
+  }
+  if (password.length < 8) {
+    setAuthMessage("密码至少需要 8 位，后续会接入更严格的密码策略。", "error");
+    return;
+  }
+  if (password !== confirmPassword) {
+    setAuthMessage("两次输入的密码不一致。", "error");
+    return;
+  }
+  if (!el.registerAgreement?.checked) {
+    setAuthMessage("请先确认演示租户说明。", "error");
+    return;
+  }
+
+  const session = {
+    tenantSlug,
+    tenantName,
+    displayName,
+    account,
+    role: "租户管理员",
+    createdAt: Date.now(),
+  };
+  writeAuthSession(session, true);
+  applyAuthSession(session, { initializeConsole: true });
+}
+
+function handleForgotPassword(event) {
+  event.preventDefault();
+  const tenantSlug = normalizeTenantSlug(el.forgotTenant?.value || "");
+  const email = (el.forgotEmail?.value || "").trim();
+  if (!tenantSlug || !email) {
+    setAuthMessage("请填写工作空间和账号邮箱。", "error");
+    return;
+  }
+  if (!isValidEmail(email)) {
+    setAuthMessage("请输入有效的账号邮箱。", "error");
+    return;
+  }
+  setAuthMessage("重置指引已生成。后续接入后端后，这里会发送邮件验证码或管理员重置流程。", "ok");
+}
+
+function logout() {
+  localStorage.removeItem(authStorageKey);
+  sessionStorage.removeItem(authStorageKey);
+  state.auth = null;
+  state.consoleBootstrapped = false;
+  state.conversations = [];
+  state.activeConversationId = null;
+  state.lastResponse = null;
+  document.body.classList.remove("authenticated");
+  document.body.classList.add("auth-required");
+  switchAuthMode("login");
+}
+
+function normalizeTenantSlug(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function initializeConsoleData() {
+  if (state.consoleBootstrapped) {
+    return;
+  }
+  state.consoleBootstrapped = true;
+  loadConversations();
+  checkHealth();
+  loadExamples();
+  renderProcessTimeline([]);
+  loadManagedFiles("schema");
+  loadManagedFiles("rag");
+  loadManagedFiles("evaluation");
+}
 
 function setRunState(label, kind = "idle") {
   el.runState.textContent = label;
@@ -4002,6 +4252,13 @@ function confirmConversationDelete(conversationId) {
 }
 
 function bindEvents() {
+  el.authModeButtons.forEach((button) => {
+    button.addEventListener("click", () => switchAuthMode(button.dataset.authMode));
+  });
+  el.loginForm?.addEventListener("submit", handleLogin);
+  el.registerForm?.addEventListener("submit", handleRegister);
+  el.forgotForm?.addEventListener("submit", handleForgotPassword);
+  el.logoutButton?.addEventListener("click", logout);
   el.newConversationButton?.addEventListener("click", startNewConversation);
   el.clearConversationButton?.addEventListener("click", resetConversation);
   el.resetContextButton?.addEventListener("click", () => {
@@ -4244,11 +4501,5 @@ function bindEvents() {
 bindEvents();
 hydrateConversationalCopy();
 setSqlContent(state.currentSql);
-loadConversations();
-checkHealth();
-loadExamples();
-renderProcessTimeline([]);
-loadManagedFiles("schema");
-loadManagedFiles("rag");
-loadManagedFiles("evaluation");
 hydrateSettingsForm();
+initializeAuth();
