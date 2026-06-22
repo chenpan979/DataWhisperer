@@ -4741,6 +4741,45 @@ td {
   width: 100%;
 }
 
+.settings-account-card {
+  justify-self: center;
+  max-width: 1180px;
+  width: 100%;
+}
+
+.settings-account-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+}
+
+.settings-account-section {
+  background: #ffffff;
+  border: 1px solid #e2ece8;
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.settings-subsection-title strong,
+.settings-subsection-title span {
+  display: block;
+}
+
+.settings-subsection-title strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.settings-subsection-title span {
+  color: #64748b;
+  line-height: 1.6;
+  margin-top: 3px;
+}
+
 .profile-settings-row {
   align-items: center;
   background: #f8fafc;
@@ -4876,6 +4915,7 @@ td {
 
 @media (max-width: 1180px) {
   .settings-grid,
+  .settings-account-layout,
   .settings-summary-grid,
   .settings-policy-grid {
     grid-template-columns: 1fr;
