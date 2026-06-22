@@ -15,6 +15,11 @@ def build_schema_overview(engine: Engine) -> dict[str, Any]:
     inspector = inspect(engine)
     tables = []
     for table_name in inspector.get_table_names():
+        try:
+            table_comment = inspector.get_table_comment(table_name).get("text") or None
+        except (NotImplementedError, TypeError):
+            table_comment = None
+
         pk_columns = set(
             inspector.get_pk_constraint(table_name).get("constrained_columns") or []
         )
@@ -24,6 +29,7 @@ def build_schema_overview(engine: Engine) -> dict[str, Any]:
                 {
                     "name": column["name"],
                     "type": str(column["type"]),
+                    "comment": column.get("comment") or None,
                     "nullable": column.get("nullable", True),
                     "primary_key": column["name"] in pk_columns or bool(column.get("primary_key")),
                 }
@@ -36,7 +42,14 @@ def build_schema_overview(engine: Engine) -> dict[str, Any]:
             }
             for fk in inspector.get_foreign_keys(table_name)
         ]
-        tables.append({"name": table_name, "columns": columns, "foreign_keys": foreign_keys})
+        tables.append(
+            {
+                "name": table_name,
+                "comment": table_comment,
+                "columns": columns,
+                "foreign_keys": foreign_keys,
+            }
+        )
     return {"tables": tables, "table_count": len(tables)}
 
 
@@ -49,7 +62,20 @@ def build_schema_graph(engine: Engine) -> dict[str, Any]:
     也可以继续在这个结构上扩展节点类型。
     """
 
-    schema = build_schema_overview(engine)
+    return schema_overview_to_graph(build_schema_overview(engine))
+
+
+def schema_overview_to_graph(schema: dict[str, Any]) -> dict[str, Any]:
+    """把统一 schema overview 转换成 3D 图谱结构。
+
+    V3.13.5 之后，schema 可能来自两种来源：
+    - 直接反射业务数据库；
+    - 从产品管理库里的 schema 快照表读取。
+
+    两条路径都复用这个函数，可以保证前端 3D 图谱、表详情面板和后续
+    Text-to-SQL schema 检索看到的是同一种数据结构。
+    """
+
     tables = schema.get("tables", [])
     incoming_counts = {table["name"]: 0 for table in tables}
     outgoing_counts = {table["name"]: len(table.get("foreign_keys", [])) for table in tables}

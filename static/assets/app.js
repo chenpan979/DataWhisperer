@@ -749,6 +749,10 @@ async function loadSchemaGraph(force = false) {
   setSchemaGraphState("加载中", "warning");
   setSchemaGraphEmpty("正在生成 3D 图谱...");
   try {
+    if (force) {
+      setSchemaGraphState("同步中", "warning");
+      await fetchJson("/api/schema/sync", { method: "POST" });
+    }
     const graph = await fetchJson("/api/schema/graph");
     state.schemaGraphLoaded = true;
     renderSchemaGraph(graph);

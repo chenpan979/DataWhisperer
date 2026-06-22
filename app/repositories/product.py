@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.product_models import (
@@ -14,6 +14,9 @@ from app.db.product_models import (
     Conversation,
     DataSource,
     DataSourceCredential,
+    SchemaColumn,
+    SchemaRelationship,
+    SchemaTable,
     Tenant,
     TenantMembership,
     User,
@@ -403,6 +406,159 @@ class DataSourceRepository:
             credential.rotated_at = datetime.now()
         self.session.flush()
         return credential
+
+
+class SchemaRepository:
+    """数据源 Schema 快照仓储。
+
+    这里保存的是“某个时间点同步到产品库里的表结构快照”。
+    后续 3D 图谱、SQL 生成上下文、RAG schema 检索都应该优先读这里，
+    而不是每次都实时扫描业务数据库。
+    """
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def clear_for_data_source(self, data_source_id: int) -> None:
+        """清空某个数据源旧的 schema 快照。"""
+
+        self.session.execute(
+            delete(SchemaRelationship).where(SchemaRelationship.data_source_id == data_source_id)
+        )
+        self.session.execute(delete(SchemaColumn).where(SchemaColumn.data_source_id == data_source_id))
+        self.session.execute(delete(SchemaTable).where(SchemaTable.data_source_id == data_source_id))
+        self.session.flush()
+
+    def create_table(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        data_source_id: int,
+        table_name: str,
+        table_comment: str | None,
+        table_type: str,
+        sync_version: str,
+        synced_at: datetime,
+    ) -> SchemaTable:
+        """写入一张同步后的数据表。"""
+
+        table = SchemaTable(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            data_source_id=data_source_id,
+            table_name=table_name,
+            table_comment=table_comment,
+            table_type=table_type,
+            sync_version=sync_version,
+            synced_at=synced_at,
+        )
+        self.session.add(table)
+        self.session.flush()
+        return table
+
+    def create_column(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        data_source_id: int,
+        table_id: int,
+        column_name: str,
+        data_type: str,
+        column_comment: str | None,
+        is_primary_key: bool,
+        is_nullable: bool,
+        ordinal_position: int,
+        semantic_type: str | None,
+    ) -> SchemaColumn:
+        """写入一列字段元信息。"""
+
+        column = SchemaColumn(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            data_source_id=data_source_id,
+            table_id=table_id,
+            column_name=column_name,
+            data_type=data_type,
+            column_comment=column_comment,
+            is_primary_key=is_primary_key,
+            is_nullable=is_nullable,
+            ordinal_position=ordinal_position,
+            semantic_type=semantic_type,
+        )
+        self.session.add(column)
+        self.session.flush()
+        return column
+
+    def create_relationship(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        data_source_id: int,
+        source_table_id: int,
+        source_column_id: int,
+        target_table_id: int,
+        target_column_id: int,
+        relation_type: str = "many_to_one",
+        confidence: float = 1.0,
+        source: str = "database_fk",
+    ) -> SchemaRelationship:
+        """写入一条表关系。"""
+
+        relationship = SchemaRelationship(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            data_source_id=data_source_id,
+            source_table_id=source_table_id,
+            source_column_id=source_column_id,
+            target_table_id=target_table_id,
+            target_column_id=target_column_id,
+            relation_type=relation_type,
+            confidence=confidence,
+            source=source,
+        )
+        self.session.add(relationship)
+        self.session.flush()
+        return relationship
+
+    def list_tables(self, *, data_source_id: int) -> list[SchemaTable]:
+        """读取某个数据源已同步的表。"""
+
+        statement = (
+            select(SchemaTable)
+            .where(SchemaTable.data_source_id == data_source_id)
+            .order_by(SchemaTable.table_name.asc())
+        )
+        return list(self.session.scalars(statement).all())
+
+    def get_table(self, *, table_id: int, workspace_id: int) -> SchemaTable | None:
+        """按表 id 读取，并校验工作空间归属。"""
+
+        statement = select(SchemaTable).where(
+            SchemaTable.id == table_id,
+            SchemaTable.workspace_id == workspace_id,
+        )
+        return self.session.scalar(statement)
+
+    def list_columns(self, *, data_source_id: int) -> list[SchemaColumn]:
+        """读取某个数据源的全部字段。"""
+
+        statement = (
+            select(SchemaColumn)
+            .where(SchemaColumn.data_source_id == data_source_id)
+            .order_by(SchemaColumn.table_id.asc(), SchemaColumn.ordinal_position.asc())
+        )
+        return list(self.session.scalars(statement).all())
+
+    def list_relationships(self, *, data_source_id: int) -> list[SchemaRelationship]:
+        """读取某个数据源的全部表关系。"""
+
+        statement = select(SchemaRelationship).where(
+            SchemaRelationship.data_source_id == data_source_id
+        )
+        return list(self.session.scalars(statement).all())
 
 
 class ConversationRepository:

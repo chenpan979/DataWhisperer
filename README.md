@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.13.4：会话与分析结果入库版本**。
+当前项目已经更新到 **V3.13.5：Schema 同步入库版本**。
 
 版本入口：
 
@@ -72,6 +72,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.13.2`：新增产品管理库 SQLAlchemy models、产品库连接配置和 Repository 层，为登录、系统设置、数据源管理和会话入库打基础。
 - `v3.13.3`：登录、注册、找回密码和当前用户信息接入真实后端 API，注册会创建租户、管理员和默认工作空间。
 - `v3.13.4`：AI 查数最近对话、助手回答快照和分析运行结果写入产品管理库，按登录用户和工作空间隔离。
+- `v3.13.5`：默认数据源 Schema 可同步入产品管理库，3D 关系图谱优先读取 `schema_tables`、`schema_columns` 和 `schema_relationships` 快照。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -143,6 +144,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.13.2 新增产品库 ORM 和 Repository 层，后端可以用代码管理租户、用户、工作空间、数据源、会话消息和分析运行记录。
 - V3.13.3 新增真实认证 API，前端登录页会请求 `/api/auth/login`、`/api/auth/register` 和 `/api/auth/me`，用户身份、租户和工作空间来自产品管理库。
 - V3.13.4 将最近对话从本地 JSON 升级为数据库持久化，`conversations` 存会话，`chat_messages` 存完整展示快照，`analysis_runs` 存 SQL、图表、表格和 trace。
+- V3.13.5 将默认数据源的表、字段和外键关系同步到产品管理库，`/api/schema/graph` 优先读取快照，3D 图谱刷新会触发 Schema 重新同步。
 
 ## 技术栈
 
@@ -355,7 +357,23 @@ uvicorn app.main:app --reload --port 8081
 
 ### `GET /api/schema/overview`
 
-读取当前 MySQL 示例库的表结构摘要，包括表名、字段、字段类型、主键和外键。
+读取当前数据源的表结构摘要。登录后优先读取产品库里的 schema 快照；未登录时保留实时读取 MySQL 示例库的兜底能力。
+
+### `GET /api/schema/graph`
+
+读取 3D 关系图谱数据，返回表节点和外键关系边。登录后优先读取 `schema_tables`、`schema_columns` 和 `schema_relationships` 中的同步快照。
+
+### `POST /api/schema/sync`
+
+把当前工作空间默认数据源的表结构同步到产品管理库，供 3D 图谱、表详情和后续 RAG schema 检索复用。
+
+### `GET /api/schema/tables`
+
+读取已同步的数据表清单。
+
+### `GET /api/schema/tables/{table_id}`
+
+读取单张表详情，包括主键、核心字段、字段列表、出入向关系等信息。
 
 ### `GET /api/examples`
 

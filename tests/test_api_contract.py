@@ -19,6 +19,9 @@ def test_app_routes_exist() -> None:
     assert "/api/examples" in paths
     assert "/api/schema/overview" in paths
     assert "/api/schema/graph" in paths
+    assert "/api/schema/sync" in paths
+    assert "/api/schema/tables" in paths
+    assert "/api/schema/tables/{table_id}" in paths
     assert "/api/chat/query" in paths
     assert "/api/chat/conversations" in paths
     assert "/api/chat/conversations/{conversation_id}" in paths
