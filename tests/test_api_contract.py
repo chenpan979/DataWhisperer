@@ -4,6 +4,10 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
+from sqlalchemy.schema import CreateTable  # noqa: E402
+from sqlalchemy.dialects import mysql  # noqa: E402
+
+from app.db.product_models import ChatMessage  # noqa: E402
 from app.main import create_app  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -76,3 +80,19 @@ def test_product_schema_migration_script_contains_core_tables() -> None:
         "audit_logs",
     ]:
         assert f"create table if not exists {table_name}" in sql
+    assert "content longtext not null" in sql
+
+
+def test_chat_message_content_uses_mysql_longtext() -> None:
+    """回答快照可能包含图表 dataURL，MySQL TEXT 的 64KB 不够用。"""
+
+    ddl = str(CreateTable(ChatMessage.__table__).compile(dialect=mysql.dialect())).lower()
+    assert "content longtext not null" in ddl
+
+
+def test_v31352_upgrade_script_expands_chat_message_content() -> None:
+    script_path = Path("scripts/upgrade_product_schema_v3_13_5_2.sql")
+    sql = script_path.read_text(encoding="utf-8").lower()
+
+    assert "alter table chat_messages" in sql
+    assert "modify column content longtext not null" in sql

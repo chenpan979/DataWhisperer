@@ -667,6 +667,12 @@ current_workspace
 - 退出后重新登录会重新拉取最近对话，不再复用旧的前端启动状态。
 - 补充重新登录后完整恢复会话的自动化测试。
 
+### V3.13.5.2：大快照会话迁移修复
+
+- `chat_messages.content` 从 MySQL `TEXT` 升级为 `LONGTEXT`。
+- 修复旧 JSON 会话迁移时，完整助手 HTML 快照超过 64KB 导致 `/api/chat/conversations` 返回 500 的问题。
+- 新增 `scripts/upgrade_product_schema_v3_13_5_2.sql`，用于升级已经创建过的产品管理库。
+
 ### V3.13.6：数据源管理接后端
 
 - 系统设置里的数据源配置从前端草稿升级为真实后端 API。

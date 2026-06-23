@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     workspace_id BIGINT UNSIGNED NOT NULL,
     conversation_id BIGINT UNSIGNED NOT NULL,
     role VARCHAR(32) NOT NULL,
-    content TEXT NOT NULL,
+    content LONGTEXT NOT NULL,
     content_type VARCHAR(32) NOT NULL DEFAULT 'text',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_chat_messages_conversation (conversation_id, id),

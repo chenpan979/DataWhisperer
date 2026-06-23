@@ -18,6 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.product_database import ProductBase
@@ -25,6 +26,7 @@ from app.core.product_database import ProductBase
 
 # MySQL 使用 BIGINT UNSIGNED，SQLite 测试环境使用 INTEGER 才能稳定自增。
 ID_TYPE = BigInteger().with_variant(Integer, "sqlite")
+MESSAGE_CONTENT_TYPE = Text().with_variant(mysql.LONGTEXT, "mysql")
 
 
 class TimestampMixin:
@@ -499,7 +501,7 @@ class ChatMessage(ProductBase):
         nullable=False,
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(MESSAGE_CONTENT_TYPE, nullable=False)
     content_type: Mapped[str] = mapped_column(String(32), nullable=False, default="text")
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
