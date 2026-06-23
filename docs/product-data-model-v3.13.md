@@ -673,6 +673,13 @@ current_workspace
 - 修复旧 JSON 会话迁移时，完整助手 HTML 快照超过 64KB 导致 `/api/chat/conversations` 返回 500 的问题。
 - 新增 `scripts/upgrade_product_schema_v3_13_5_2.sql`，用于升级已经创建过的产品管理库。
 
+### V3.13.5.3：图表渲染恢复修复
+
+- 历史回答如果已经保存 `chart`、`rows`、`columns`，前端会优先使用结构化数据重新渲染图表。
+- 新生成的完整回答快照不再把结构化图表保存成图片，避免动画未完成时截到空坐标轴。
+- 前端全局 SVG 样式收窄到图标元素，避免影响 ECharts 的 SVG 渲染。
+- `static/index.html` 和 `bootstrap.js` 静态资源版本升级到 `3.13.5.3`，减少浏览器缓存旧文件导致的显示异常。
+
 ### V3.13.6：数据源管理接后端
 
 - 系统设置里的数据源配置从前端草稿升级为真实后端 API。

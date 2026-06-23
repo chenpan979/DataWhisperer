@@ -1336,7 +1336,8 @@ function createChartSnapshot() {
 
 function createAssistantSnapshotHtml(data) {
   const clone = el.assistantResultMessage.cloneNode(true);
-  const chartSnapshot = createChartSnapshot();
+  const shouldUseChartSnapshot = !hasStructuredChartPayload(data?.chart, data?.rows);
+  const chartSnapshot = shouldUseChartSnapshot ? createChartSnapshot() : "";
   clone.hidden = false;
   clone.removeAttribute("id");
   clone.classList.add("archived-turn", "conversation-history-turn", "snapshot-history-turn");
@@ -1448,7 +1449,7 @@ function createHistoryUserNode(turn) {
 }
 
 function createHistoryAssistantNode(turn) {
-  if (turn.assistantHtml) {
+  if (turn.assistantHtml && !hasFullTurnSnapshot(turn)) {
     return createHistoryAssistantSnapshotNode(turn);
   }
 
@@ -1493,6 +1494,16 @@ function hasFullTurnSnapshot(turn) {
       || turn.rows?.length
       || turn.followups?.length
       || turn.warnings?.length,
+  );
+}
+
+function hasStructuredChartPayload(chartOption, rows) {
+  return Boolean(
+    chartOption
+      && chartOption.type
+      && chartOption.type !== "empty"
+      && Array.isArray(rows)
+      && rows.length,
   );
 }
 
@@ -1593,10 +1604,16 @@ function renderHistoryCharts() {
       if (!chartOption || node.dataset.rendered === "true") {
         return;
       }
-      const chart = window.echarts.init(node);
-      chart.setOption(enhanceChartOption(localizeChartOption(chartOption)), true);
-      state.historyChartInstances.push(chart);
-      node.dataset.rendered = "true";
+      try {
+        const chart = window.echarts.init(node, null, { renderer: "canvas" });
+        chart.setOption(enhanceChartOption(localizeChartOption(chartOption)), true);
+        state.historyChartInstances.push(chart);
+        node.dataset.rendered = "true";
+      } catch (error) {
+        console.warn("Render history ECharts failed, fallback chart will be used.", error);
+        node.innerHTML = buildHistoryFallbackSvg(localizeChartOption(chartOption));
+        node.dataset.rendered = "true";
+      }
     });
   });
 }
@@ -2154,12 +2171,19 @@ function renderChart(chartOption, rows) {
     const chartNode = document.createElement("div");
     chartNode.className = "chart-canvas";
     el.chartHost.appendChild(chartNode);
-    state.chart = window.echarts.init(chartNode);
-    state.chart.setOption(enhanceChartOption(localizedOption), true);
-    state.chart.on("click", handleChartClick);
-    resizeActiveChart();
-    el.chartInteraction.textContent = "可悬停查看数据，点击图表元素查看明细。";
-    return;
+    try {
+      state.chart = window.echarts.init(chartNode, null, { renderer: "canvas" });
+      state.chart.setOption(enhanceChartOption(localizedOption), true);
+      state.chart.on("click", handleChartClick);
+      resizeActiveChart();
+      el.chartInteraction.textContent = "可悬停查看数据，点击图表元素查看明细。";
+      return;
+    } catch (error) {
+      console.warn("Render ECharts failed, fallback chart will be used.", error);
+      state.chart = null;
+      renderFallbackChart(localizedOption);
+      return;
+    }
   }
 
   renderFallbackChart(localizedOption);

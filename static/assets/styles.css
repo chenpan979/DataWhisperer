@@ -70,7 +70,7 @@ button:active {
   white-space: nowrap;
 }
 
-svg {
+svg:has(use) {
   width: 18px;
   height: 18px;
   fill: none;
