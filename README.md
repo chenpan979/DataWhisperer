@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.13.5.4：历史对话一比一恢复修复版本**。
+当前项目已经更新到 **V3.13.6：数据源管理接入后端 API 版本**。
 
 版本入口：
 
@@ -77,6 +77,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.13.5.2`：将 `chat_messages.content` 升级为 MySQL `LONGTEXT`，修复旧会话大 HTML 快照迁移时超过 `TEXT` 长度导致登录后会话接口 500 的问题。
 - `v3.13.5.3`：修复 AI 查数图表内容不显示的问题，历史会话优先用结构化图表数据重新渲染，并刷新前端静态资源版本避免旧样式缓存。
 - `v3.13.5.4`：历史对话恢复时复用原始回答卡片结构，只替换图表区域为 ECharts 重新渲染，避免恢复出来的布局和实时对话不一致。
+- `v3.13.6`：系统设置的数据源配置接入真实后端 API，支持读取默认数据源、保存连接信息、后端连接测试和查看 Schema 最近同步状态。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -153,6 +154,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.13.5.2 修复产品库字段容量：`chat_messages.content` 使用 `LONGTEXT` 存储完整回答快照，已提供 [升级脚本](scripts/upgrade_product_schema_v3_13_5_2.sql) 处理已有产品库。
 - V3.13.5.3 修复前端图表恢复链路：历史回答不再优先展示可能截早的图表图片，而是使用 `chart`、`rows`、`columns` 重新渲染图表，同时收窄全局 SVG 样式，避免影响 ECharts。
 - V3.13.5.4 修复历史回答 UI 一致性：恢复时优先复用保存的对话卡片 HTML，详细数据、生成 SQL、追问建议等仍保持原卡片结构，图表不再依赖图片快照，而是由结构化 ECharts 配置重新绘制。
+- V3.13.6 将系统设置里的数据源配置从前端草稿升级为后端 API：默认数据源来自产品库，保存、连接测试和 Schema 同步时间都可以被真实管理。
 
 ## 技术栈
 
@@ -351,6 +353,7 @@ uvicorn app.main:app --reload --port 8081
 - Swagger 文档：http://127.0.0.1:8081/docs
 - 健康检查：http://127.0.0.1:8081/api/health
 - 示例问题：http://127.0.0.1:8081/api/examples
+- 默认数据源：http://127.0.0.1:8081/api/data-sources/default
 - 数据结构：http://127.0.0.1:8081/api/schema/overview
 - 数据结构资料文件：http://127.0.0.1:8081/api/files/schema
 - RAG 知识库资料文件：http://127.0.0.1:8081/api/files/rag
@@ -362,6 +365,22 @@ uvicorn app.main:app --reload --port 8081
 ### `GET /api/health`
 
 用于检查服务是否正常启动。
+
+### `GET /api/data-sources/default`
+
+读取当前工作空间默认数据源配置。接口不会返回真实密码，只返回连接状态、是否已保存密码、最近检测时间和 Schema 同步状态。
+
+### `PATCH /api/data-sources/default`
+
+保存系统设置里的默认数据源配置。当前版本只正式支持 MySQL，密码为空或为 `******` 时表示沿用后端已保存凭据。
+
+### `POST /api/data-sources/default/test`
+
+后端实际测试当前表单里的数据源连接，返回是否成功、表数量、耗时和检测时间。
+
+### `POST /api/data-sources/default/sync`
+
+同步默认数据源 Schema，并返回系统设置页需要展示的同步结果。
 
 ### `GET /api/schema/overview`
 

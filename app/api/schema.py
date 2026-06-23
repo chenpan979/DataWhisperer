@@ -7,6 +7,7 @@ from app.api.auth import AuthContext, require_auth_context
 from app.core.database import get_engine
 from app.core.product_database import get_product_session
 from app.models.schema import SchemaSyncResponse
+from app.tools.data_source_engine import get_default_data_source_engine
 from app.tools.schema_sync import SchemaSyncService
 from app.tools.schema_tool import build_schema_graph, build_schema_overview
 
@@ -123,4 +124,12 @@ def _optional_auth_context(authorization: str | None, session: Session) -> AuthC
 
 
 def _build_schema_service(*, session: Session, auth_context: AuthContext) -> SchemaSyncService:
-    return SchemaSyncService(session=session, auth_context=auth_context, engine=get_engine())
+    return SchemaSyncService(
+        session=session,
+        auth_context=auth_context,
+        engine=get_default_data_source_engine(
+            session=session,
+            auth_context=auth_context,
+            fallback_engine_factory=get_engine,
+        ),
+    )

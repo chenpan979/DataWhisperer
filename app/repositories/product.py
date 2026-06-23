@@ -315,6 +315,14 @@ class DataSourceRepository:
 
         return self.session.get(DataSource, data_source_id)
 
+    def get_credential(self, *, data_source_id: int) -> DataSourceCredential | None:
+        """读取数据源凭据，后续可以在这里替换成 KMS 或 Vault。"""
+
+        statement = select(DataSourceCredential).where(
+            DataSourceCredential.data_source_id == data_source_id
+        )
+        return self.session.scalar(statement)
+
     def list_by_workspace(self, *, workspace_id: int) -> list[DataSource]:
         """列出工作空间下的可用数据源。"""
 
@@ -376,6 +384,40 @@ class DataSourceRepository:
             last_checked_at=last_checked_at,
         )
         self.session.add(data_source)
+        self.session.flush()
+        return data_source
+
+    def update(
+        self,
+        data_source: DataSource,
+        *,
+        name: str | None = None,
+        db_type: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        database_name: str | None = None,
+        username: str | None = None,
+        status: str | None = None,
+        last_checked_at: datetime | None = None,
+    ) -> DataSource:
+        """更新数据源基础连接信息。"""
+
+        if name is not None:
+            data_source.name = name
+        if db_type is not None:
+            data_source.db_type = db_type
+        if host is not None:
+            data_source.host = host
+        if port is not None:
+            data_source.port = port
+        if database_name is not None:
+            data_source.database_name = database_name
+        if username is not None:
+            data_source.username = username
+        if status is not None:
+            data_source.status = status
+        if last_checked_at is not None:
+            data_source.last_checked_at = last_checked_at
         self.session.flush()
         return data_source
 

@@ -26,6 +26,7 @@ const state = {
   historyChartOptions: new Map(),
   historyChartInstances: [],
   historyChartRetryCount: 0,
+  dataSource: null,
   files: {
     schema: [],
     rag: [],
@@ -274,6 +275,7 @@ const el = {
   settingsPasswordToggle: document.querySelector("#settingsPasswordToggle"),
   settingsConnectionHint: document.querySelector("#settingsConnectionHint"),
   settingsTestConnectionButton: document.querySelector("#settingsTestConnectionButton"),
+  settingsSyncSchemaButton: document.querySelector("#settingsSyncSchemaButton"),
   settingsSaveDatasourceButton: document.querySelector("#settingsSaveDatasourceButton"),
   settingsProvider: document.querySelector("#settingsProvider"),
   settingsBaseUrl: document.querySelector("#settingsBaseUrl"),
@@ -405,6 +407,8 @@ function applyAuthSession(session, options = {}) {
   if (options.initializeConsole) {
     initializeConsoleData();
   }
+  state.settingsLoaded = false;
+  hydrateSettingsForm();
 }
 
 function renderAuthUser() {
@@ -2447,6 +2451,87 @@ function setControlValue(control, value) {
   control.value = value ?? "";
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function settingsFromDataSource(dataSource, fallback = readSettingsDraft()) {
+  if (!dataSource) {
+    return fallback;
+  }
+  return {
+    ...fallback,
+    datasourceName: dataSource.name || fallback.datasourceName,
+    dbType: dataSource.db_type || fallback.dbType,
+    dbHost: dataSource.host || fallback.dbHost,
+    dbPort: String(dataSource.port || fallback.dbPort),
+    dbName: dataSource.database_name || fallback.dbName,
+    dbUser: dataSource.username || fallback.dbUser,
+    dbPassword: dataSource.password_saved ? "******" : "",
+  };
+}
+
+function collectDataSourcePayload() {
+  return {
+    name: el.settingsDatasourceName?.value.trim() || defaultSettings.datasourceName,
+    db_type: el.settingsDbType?.value || defaultSettings.dbType,
+    host: el.settingsDbHost?.value.trim() || defaultSettings.dbHost,
+    port: Number(el.settingsDbPort?.value || defaultSettings.dbPort),
+    database_name: el.settingsDbName?.value.trim() || defaultSettings.dbName,
+    username: el.settingsDbUser?.value.trim() || defaultSettings.dbUser,
+    password: el.settingsDbPassword?.value || "",
+  };
+}
+
+function renderDataSourceState(dataSource) {
+  if (!dataSource) {
+    return;
+  }
+  const statusLabel = dataSource.status === "failed" ? "连接失败" : dataSource.status === "unknown" ? "未检测" : "已连接";
+  const statusKind = dataSource.status === "failed" ? "error" : dataSource.status === "unknown" ? "warning" : "ok";
+  if (el.settingsDbState) {
+    el.settingsDbState.textContent = statusLabel;
+    el.settingsDbState.className = `state-label ${statusKind}`;
+  }
+  if (el.settingsConnectionHint) {
+    const syncText = dataSource.schema_synced_at
+      ? `Schema 最近同步：${formatDateTime(dataSource.schema_synced_at)}，${dataSource.schema_table_count || 0} 张表。`
+      : "Schema 尚未同步，保存并测试连接后可在数据结构页刷新同步。";
+    const checkText = dataSource.last_checked_at
+      ? `连接最近检测：${formatDateTime(dataSource.last_checked_at)}。`
+      : "连接尚未检测。";
+    el.settingsConnectionHint.textContent = `${checkText} ${syncText}`;
+  }
+}
+
+function fillDataSourceForm(dataSource) {
+  state.dataSource = dataSource;
+  const settings = settingsFromDataSource(dataSource);
+  writeSettingsDraft(settings);
+  setControlValue(el.settingsDatasourceName, settings.datasourceName);
+  setControlValue(el.settingsDbType, settings.dbType);
+  setControlValue(el.settingsDbHost, settings.dbHost);
+  setControlValue(el.settingsDbPort, settings.dbPort);
+  setControlValue(el.settingsDbName, settings.dbName);
+  setControlValue(el.settingsDbUser, settings.dbUser);
+  setControlValue(el.settingsDbPassword, settings.dbPassword);
+  renderSettingsSummary(settings);
+  renderDataSourceState(dataSource);
+}
+
 function collectSettingsDraft() {
   return {
     datasourceName: el.settingsDatasourceName?.value.trim() || defaultSettings.datasourceName,
@@ -2515,7 +2600,7 @@ function renderProfileSettings(settings) {
   }
 }
 
-function hydrateSettingsForm() {
+async function hydrateSettingsForm() {
   const settings = readSettingsDraft();
   setControlValue(el.settingsDatasourceName, settings.datasourceName);
   setControlValue(el.settingsDbType, settings.dbType);
@@ -2534,6 +2619,75 @@ function hydrateSettingsForm() {
   setControlValue(el.settingsDefaultView, settings.defaultView);
   renderSettingsSummary(settings);
   state.settingsLoaded = true;
+  if (!state.auth) {
+    return;
+  }
+  try {
+    const dataSource = await fetchJson("/api/data-sources/default");
+    fillDataSourceForm(dataSource);
+    setSettingsStatus("后端配置已加载", "ok");
+  } catch (error) {
+    setSettingsStatus(`数据源配置加载失败：${error.message}`, "error");
+  }
+}
+
+async function saveDataSourceSettings() {
+  if (!el.settingsSaveDatasourceButton) {
+    return;
+  }
+  const button = el.settingsSaveDatasourceButton;
+  const buttonText = button.querySelector("span");
+  const originalText = buttonText?.textContent || "保存配置";
+  button.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "保存中";
+  }
+  setSettingsStatus("正在保存数据源配置", "warning");
+  try {
+    const dataSource = await fetchJson("/api/data-sources/default", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectDataSourcePayload()),
+    });
+    fillDataSourceForm(dataSource);
+    setSettingsStatus("数据源配置已保存", "ok");
+    markButtonDone(button, "已保存");
+  } catch (error) {
+    setSettingsStatus(`保存失败：${error.message}`, "error");
+    if (buttonText) {
+      buttonText.textContent = originalText;
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function syncDataSourceSchema() {
+  if (!el.settingsSyncSchemaButton) {
+    return;
+  }
+  const button = el.settingsSyncSchemaButton;
+  const buttonText = button.querySelector("span");
+  const originalText = buttonText?.textContent || "同步 Schema";
+  button.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "同步中";
+  }
+  setSettingsStatus("正在同步 Schema", "warning");
+  try {
+    const result = await fetchJson("/api/data-sources/default/sync", { method: "POST" });
+    fillDataSourceForm(result.data_source);
+    setSettingsStatus(result.message || "Schema 已同步", "ok");
+    markButtonDone(button, "已同步");
+    state.schemaGraphLoaded = false;
+  } catch (error) {
+    setSettingsStatus(`Schema 同步失败：${error.message}`, "error");
+    if (buttonText) {
+      buttonText.textContent = originalText;
+    }
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function saveSettingsDraft(button, sectionLabel) {
@@ -2655,6 +2809,65 @@ async function testSettingsConnection() {
       buttonText.textContent = "连接正常";
       setTimeout(() => {
         if (buttonText.textContent === "连接正常") {
+          buttonText.textContent = originalText;
+        }
+      }, 1200);
+    }
+  } catch (error) {
+    if (el.settingsConnectionHint) {
+      el.settingsConnectionHint.textContent = `连接检测失败：${error.message}`;
+    }
+    if (el.settingsDbState) {
+      el.settingsDbState.textContent = "连接失败";
+      el.settingsDbState.className = "state-label error";
+    }
+    setSettingsStatus("连接失败", "error");
+  } finally {
+    el.settingsTestConnectionButton.disabled = false;
+    if (buttonText && buttonText.textContent === "检测中") {
+      buttonText.textContent = originalText;
+    }
+    settingsCard?.classList.remove("is-testing");
+  }
+}
+
+async function testSettingsConnectionApi() {
+  if (!el.settingsTestConnectionButton) {
+    return;
+  }
+  const settingsCard = el.settingsTestConnectionButton.closest(".settings-card");
+  const buttonText = el.settingsTestConnectionButton.querySelector("span");
+  const originalText = buttonText?.textContent || "测试连接";
+  el.settingsTestConnectionButton.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "检测中";
+  }
+  settingsCard?.classList.add("is-testing");
+  setSettingsStatus("连接检测中", "warning");
+  if (el.settingsDbState) {
+    el.settingsDbState.textContent = "检测中";
+    el.settingsDbState.className = "state-label warning";
+  }
+  try {
+    const result = await fetchJson("/api/data-sources/default/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectDataSourcePayload()),
+    });
+    const dataSource = await fetchJson("/api/data-sources/default");
+    fillDataSourceForm(dataSource);
+    if (el.settingsConnectionHint) {
+      el.settingsConnectionHint.textContent = `${result.message} 耗时 ${result.latency_ms}ms。`;
+    }
+    if (el.settingsDbState) {
+      el.settingsDbState.textContent = result.ok ? "已连接" : "连接失败";
+      el.settingsDbState.className = `state-label ${result.ok ? "ok" : "error"}`;
+    }
+    setSettingsStatus(result.ok ? "连接正常" : "连接失败", result.ok ? "ok" : "error");
+    if (buttonText) {
+      buttonText.textContent = result.ok ? "连接正常" : "连接失败";
+      setTimeout(() => {
+        if (buttonText.textContent === "连接正常" || buttonText.textContent === "连接失败") {
           buttonText.textContent = originalText;
         }
       }, 1200);
@@ -4524,10 +4737,9 @@ function bindEvents() {
   });
   el.runEvaluationButton.addEventListener("click", runEvaluations);
   el.settingsPasswordToggle?.addEventListener("click", toggleSettingsPassword);
-  el.settingsTestConnectionButton?.addEventListener("click", testSettingsConnection);
-  el.settingsSaveDatasourceButton?.addEventListener("click", () =>
-    saveSettingsDraft(el.settingsSaveDatasourceButton, "数据源配置"),
-  );
+  el.settingsTestConnectionButton?.addEventListener("click", testSettingsConnectionApi);
+  el.settingsSyncSchemaButton?.addEventListener("click", syncDataSourceSchema);
+  el.settingsSaveDatasourceButton?.addEventListener("click", saveDataSourceSettings);
   el.settingsSaveModelButton?.addEventListener("click", () => saveSettingsDraft(el.settingsSaveModelButton, "模型配置"));
   el.settingsSaveProfileButton?.addEventListener("click", () =>
     saveSettingsDraft(el.settingsSaveProfileButton, "账户偏好"),
