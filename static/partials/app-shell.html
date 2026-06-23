@@ -908,22 +908,31 @@
                     </div>
                     <div>
                       <h3>模型配置</h3>
-                      <p>管理 Chat 模型与 Embedding 模型，便于后续灰度切换。</p>
+                      <p>管理模型供应商、默认 Profile 和 Agent 绑定，便于后续多智能体灰度切换。</p>
                     </div>
+                    <span class="state-label warning" id="settingsModelState">未加载</span>
                   </div>
-                  <div class="settings-form-grid single">
+                  <div class="settings-form-grid">
                     <label class="settings-field">
                       <span>模型供应商</span>
                       <select id="settingsProvider">
-                        <option>DashScope</option>
-                        <option>OpenAI</option>
-                        <option>DeepSeek</option>
-                        <option>本地兼容服务</option>
+                        <option value="dashscope">DashScope</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="local">本地兼容服务</option>
                       </select>
+                    </label>
+                    <label class="settings-field">
+                      <span>供应商名称</span>
+                      <input id="settingsProviderName" type="text" value="DashScope" />
                     </label>
                     <label class="settings-field">
                       <span>Base URL</span>
                       <input id="settingsBaseUrl" type="text" value="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+                    </label>
+                    <label class="settings-field">
+                      <span>API Key</span>
+                      <input id="settingsApiKey" type="password" value="******" autocomplete="off" />
                     </label>
                     <label class="settings-field">
                       <span>Chat 模型</span>
@@ -933,11 +942,35 @@
                       <span>Embedding 模型</span>
                       <input id="settingsEmbeddingModel" type="text" value="text-embedding-v4" />
                     </label>
+                    <label class="settings-field">
+                      <span>Temperature</span>
+                      <input id="settingsTemperature" type="number" min="0" max="2" step="0.01" value="0.1" />
+                    </label>
+                    <label class="settings-field">
+                      <span>最大 Token</span>
+                      <input id="settingsMaxTokens" type="number" min="128" max="128000" step="128" value="2048" />
+                    </label>
                   </div>
-                  <button class="secondary-button settings-full-button" id="settingsSaveModelButton" type="button">
-                    <svg><use href="#icon-check"></use></svg>
-                    <span>保存模型配置</span>
-                  </button>
+                  <div class="settings-agent-bindings">
+                    <div class="settings-subsection-title">
+                      <strong>Agent 模型绑定</strong>
+                      <span>首版先共用默认 Profile，后续可为每个 Agent 独立切换模型。</span>
+                    </div>
+                    <div class="agent-binding-list" id="settingsAgentBindingList">
+                      <div class="empty-state">模型绑定尚未加载</div>
+                    </div>
+                  </div>
+                  <div class="settings-card-actions">
+                    <p id="settingsModelHint">模型配置会保存到产品管理库，API Key 只在后端保留脱敏状态。</p>
+                    <button class="secondary-button compact-button" id="settingsTestModelButton" type="button">
+                      <svg><use href="#icon-refresh"></use></svg>
+                      <span>测试配置</span>
+                    </button>
+                    <button class="primary-button compact-button" id="settingsSaveModelButton" type="button">
+                      <svg><use href="#icon-check"></use></svg>
+                      <span>保存模型配置</span>
+                    </button>
+                  </div>
                 </section>
 
                 <section class="settings-card settings-account-card settings-tab-panel" data-settings-panel="account">

@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.13.7：AI 查数接入默认数据源版本**。
+当前项目已经更新到 **V3.13.8：模型配置接入后端 API 版本**。
 
 版本入口：
 
@@ -79,6 +79,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.13.5.4`：历史对话恢复时复用原始回答卡片结构，只替换图表区域为 ECharts 重新渲染，避免恢复出来的布局和实时对话不一致。
 - `v3.13.6`：系统设置的数据源配置接入真实后端 API，支持读取默认数据源、保存连接信息、后端连接测试和查看 Schema 最近同步状态。
 - `v3.13.7`：AI 查数主入口接入当前工作空间默认数据源，登录态自然语言查询、Schema 同步和系统设置保持同一条数据源链路，未登录调试仍保留 `.env` 兜底。
+- `v3.13.8`：系统设置的模型配置接入真实后端 API，新增模型供应商、模型密钥、模型 Profile 和 Agent 绑定表，为后续多智能体独立模型路由预留接口。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -157,6 +158,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.13.5.4 修复历史回答 UI 一致性：恢复时优先复用保存的对话卡片 HTML，详细数据、生成 SQL、追问建议等仍保持原卡片结构，图表不再依赖图片快照，而是由结构化 ECharts 配置重新绘制。
 - V3.13.6 将系统设置里的数据源配置从前端草稿升级为后端 API：默认数据源来自产品库，保存、连接测试和 Schema 同步时间都可以被真实管理。
 - V3.13.7 将 AI 查数的业务库连接也切到当前工作空间默认数据源：登录用户提问时会先解析租户和工作空间，再读取系统设置中的默认数据源创建 Engine；未登录接口调试仍使用 `.env` 的 `DATABASE_URL`。
+- V3.13.8 将模型配置从前端草稿升级为后端 API：`model_providers` 管供应商，`model_credentials` 管脱敏密钥，`model_profiles` 管调用参数，`agent_model_bindings` 预留 SQL、图表、分析总结、RAG 等 Agent 的模型路由能力。
 
 ## 技术栈
 
@@ -356,6 +358,7 @@ uvicorn app.main:app --reload --port 8081
 - 健康检查：http://127.0.0.1:8081/api/health
 - 示例问题：http://127.0.0.1:8081/api/examples
 - 默认数据源：http://127.0.0.1:8081/api/data-sources/default
+- 默认模型配置：http://127.0.0.1:8081/api/model-settings/default
 - 数据结构：http://127.0.0.1:8081/api/schema/overview
 - 数据结构资料文件：http://127.0.0.1:8081/api/files/schema
 - RAG 知识库资料文件：http://127.0.0.1:8081/api/files/rag
@@ -383,6 +386,42 @@ uvicorn app.main:app --reload --port 8081
 ### `POST /api/data-sources/default/sync`
 
 同步默认数据源 Schema，并返回系统设置页需要展示的同步结果。
+
+### `GET /api/model-settings/default`
+
+读取当前工作空间默认模型配置，包含模型供应商、默认 Profile 和 Agent 模型绑定。接口不会返回真实 API Key，只返回是否已保存和脱敏后的 key mask。
+
+### `PATCH /api/model-settings/default`
+
+保存系统设置里的模型配置。`api_key` 为空或为 `******` 时表示沿用后端已保存密钥，不做覆盖。
+
+请求示例：
+
+```json
+{
+  "provider_name": "DashScope",
+  "provider_type": "dashscope",
+  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "api_key": "******",
+  "profile_name": "默认模型配置",
+  "chat_model": "qwen-plus",
+  "embedding_model": "text-embedding-v4",
+  "temperature": 0.1,
+  "max_tokens": 2048
+}
+```
+
+### `POST /api/model-settings/default/test`
+
+检测模型配置是否具备基础可用条件。当前版本先做服务端结构校验和密钥存在性检查，后续可以升级为真实模型网关 ping。
+
+### `GET /api/model-settings/agent-bindings`
+
+读取 SQL 生成、分析总结、图表推荐、RAG 向量化等 Agent 能力当前绑定的模型 Profile。
+
+### `PATCH /api/model-settings/agent-bindings`
+
+批量更新 Agent 模型绑定，为后续多智能体按能力切模型预留接口。
 
 ### `GET /api/schema/overview`
 

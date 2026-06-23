@@ -5122,6 +5122,66 @@ td {
   min-width: 220px;
 }
 
+.settings-agent-bindings {
+  background: linear-gradient(180deg, #fbfefd, #f8fafc);
+  border: 1px solid #e0ebe7;
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.agent-binding-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.agent-binding-card {
+  background: #ffffff;
+  border: 1px solid #dce8e4;
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.agent-binding-card strong,
+.agent-binding-card span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-binding-card strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.agent-binding-card span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.agent-binding-meta {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.agent-binding-meta code {
+  background: #ecfdf8;
+  border: 1px solid #c9eee4;
+  border-radius: 999px;
+  color: #006b62;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
 .settings-full-button {
   justify-content: center;
   min-height: 40px;
@@ -5361,6 +5421,10 @@ td {
   }
 
   .settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-binding-list {
     grid-template-columns: 1fr;
   }
 

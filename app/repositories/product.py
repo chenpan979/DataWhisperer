@@ -8,12 +8,16 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.product_models import (
+    AgentModelBinding,
     AnalysisRun,
     AuditLog,
     ChatMessage,
     Conversation,
     DataSource,
     DataSourceCredential,
+    ModelCredential,
+    ModelProfile,
+    ModelProvider,
     SchemaColumn,
     SchemaRelationship,
     SchemaTable,
@@ -448,6 +452,265 @@ class DataSourceRepository:
             credential.rotated_at = datetime.now()
         self.session.flush()
         return credential
+
+
+class ModelSettingsRepository:
+    """模型配置仓储。
+
+    这里按“供应商 -> Profile -> Agent 绑定”三层组织，避免后续多 Agent
+    改造时把模型配置写死在某一个单体服务里。
+    """
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def list_providers(self, *, workspace_id: int) -> list[ModelProvider]:
+        """列出工作空间下的模型供应商。"""
+
+        statement = (
+            select(ModelProvider)
+            .where(ModelProvider.workspace_id == workspace_id)
+            .order_by(ModelProvider.created_at.asc())
+        )
+        return list(self.session.scalars(statement).all())
+
+    def get_default_provider(self, *, workspace_id: int) -> ModelProvider | None:
+        """读取默认模型供应商。
+
+        当前版本一个工作空间先只暴露一个默认供应商；后续多模型路由时可以增加
+        `is_default` 或按 Agent 绑定反查。
+        """
+
+        statement = (
+            select(ModelProvider)
+            .where(ModelProvider.workspace_id == workspace_id)
+            .order_by(ModelProvider.created_at.asc())
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def create_provider(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        name: str,
+        provider_type: str,
+        base_url: str,
+        status: str = "configured",
+        created_by: int | None = None,
+        last_checked_at: datetime | None = None,
+    ) -> ModelProvider:
+        """创建模型供应商。"""
+
+        provider = ModelProvider(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            name=name,
+            provider_type=provider_type,
+            base_url=base_url,
+            status=status,
+            created_by=created_by,
+            last_checked_at=last_checked_at,
+        )
+        self.session.add(provider)
+        self.session.flush()
+        return provider
+
+    def update_provider(
+        self,
+        provider: ModelProvider,
+        *,
+        name: str | None = None,
+        provider_type: str | None = None,
+        base_url: str | None = None,
+        status: str | None = None,
+        last_checked_at: datetime | None = None,
+    ) -> ModelProvider:
+        """更新模型供应商基础信息。"""
+
+        if name is not None:
+            provider.name = name
+        if provider_type is not None:
+            provider.provider_type = provider_type
+        if base_url is not None:
+            provider.base_url = base_url
+        if status is not None:
+            provider.status = status
+        if last_checked_at is not None:
+            provider.last_checked_at = last_checked_at
+        self.session.flush()
+        return provider
+
+    def save_credential(
+        self,
+        *,
+        provider_id: int,
+        encrypted_api_key: str,
+        key_mask: str | None,
+        encryption_version: str = "local-demo",
+    ) -> ModelCredential:
+        """保存或更新模型 API Key。
+
+        当前演示版仍用本地可逆占位编码；真实产品应替换为 KMS/Vault。
+        """
+
+        statement = select(ModelCredential).where(ModelCredential.provider_id == provider_id)
+        credential = self.session.scalar(statement)
+        if credential is None:
+            credential = ModelCredential(
+                provider_id=provider_id,
+                encrypted_api_key=encrypted_api_key,
+                key_mask=key_mask,
+                encryption_version=encryption_version,
+                rotated_at=datetime.now(),
+            )
+            self.session.add(credential)
+        else:
+            credential.encrypted_api_key = encrypted_api_key
+            credential.key_mask = key_mask
+            credential.encryption_version = encryption_version
+            credential.rotated_at = datetime.now()
+        self.session.flush()
+        return credential
+
+    def get_default_profile(self, *, workspace_id: int) -> ModelProfile | None:
+        """读取工作空间默认模型 Profile。"""
+
+        default_statement = (
+            select(ModelProfile)
+            .where(
+                ModelProfile.workspace_id == workspace_id,
+                ModelProfile.is_default.is_(True),
+            )
+            .order_by(ModelProfile.created_at.asc())
+            .limit(1)
+        )
+        profile = self.session.scalar(default_statement)
+        if profile is not None:
+            return profile
+        fallback_statement = (
+            select(ModelProfile)
+            .where(ModelProfile.workspace_id == workspace_id)
+            .order_by(ModelProfile.created_at.asc())
+            .limit(1)
+        )
+        return self.session.scalar(fallback_statement)
+
+    def create_profile(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        provider_id: int,
+        name: str,
+        chat_model: str,
+        embedding_model: str | None,
+        temperature: float,
+        max_tokens: int,
+        is_default: bool = True,
+        status: str = "active",
+        config_json: dict[str, Any] | None = None,
+    ) -> ModelProfile:
+        """创建模型调用 Profile。"""
+
+        profile = ModelProfile(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            provider_id=provider_id,
+            name=name,
+            chat_model=chat_model,
+            embedding_model=embedding_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            is_default=is_default,
+            status=status,
+            config_json=config_json or {},
+        )
+        self.session.add(profile)
+        self.session.flush()
+        return profile
+
+    def update_profile(
+        self,
+        profile: ModelProfile,
+        *,
+        name: str | None = None,
+        chat_model: str | None = None,
+        embedding_model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        is_default: bool | None = None,
+        status: str | None = None,
+        config_json: dict[str, Any] | None = None,
+    ) -> ModelProfile:
+        """更新模型调用 Profile。"""
+
+        if name is not None:
+            profile.name = name
+        if chat_model is not None:
+            profile.chat_model = chat_model
+        if embedding_model is not None:
+            profile.embedding_model = embedding_model
+        if temperature is not None:
+            profile.temperature = temperature
+        if max_tokens is not None:
+            profile.max_tokens = max_tokens
+        if is_default is not None:
+            profile.is_default = is_default
+        if status is not None:
+            profile.status = status
+        if config_json is not None:
+            profile.config_json = config_json
+        self.session.flush()
+        return profile
+
+    def list_bindings(self, *, workspace_id: int) -> list[AgentModelBinding]:
+        """列出工作空间下的 Agent 模型绑定。"""
+
+        statement = (
+            select(AgentModelBinding)
+            .where(AgentModelBinding.workspace_id == workspace_id)
+            .order_by(AgentModelBinding.agent_key.asc(), AgentModelBinding.capability.asc())
+        )
+        return list(self.session.scalars(statement).all())
+
+    def upsert_binding(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        agent_key: str,
+        capability: str,
+        model_profile_id: int,
+        enabled: bool = True,
+        params_json: dict[str, Any] | None = None,
+    ) -> AgentModelBinding:
+        """创建或更新 Agent 模型绑定。"""
+
+        statement = select(AgentModelBinding).where(
+            AgentModelBinding.workspace_id == workspace_id,
+            AgentModelBinding.agent_key == agent_key,
+            AgentModelBinding.capability == capability,
+        )
+        binding = self.session.scalar(statement)
+        if binding is None:
+            binding = AgentModelBinding(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                agent_key=agent_key,
+                capability=capability,
+                model_profile_id=model_profile_id,
+                enabled=enabled,
+                params_json=params_json or {},
+            )
+            self.session.add(binding)
+        else:
+            binding.model_profile_id = model_profile_id
+            binding.enabled = enabled
+            binding.params_json = params_json or {}
+        self.session.flush()
+        return binding
 
 
 class SchemaRepository:

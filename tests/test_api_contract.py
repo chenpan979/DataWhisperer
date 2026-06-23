@@ -24,6 +24,9 @@ def test_app_routes_exist() -> None:
     assert "/api/data-sources/default" in paths
     assert "/api/data-sources/default/test" in paths
     assert "/api/data-sources/default/sync" in paths
+    assert "/api/model-settings/default" in paths
+    assert "/api/model-settings/default/test" in paths
+    assert "/api/model-settings/agent-bindings" in paths
     assert "/api/schema/overview" in paths
     assert "/api/schema/graph" in paths
     assert "/api/schema/sync" in paths
@@ -48,13 +51,13 @@ def test_console_static_fragments_are_served() -> None:
     index_response = client.get("/")
     assert index_response.status_code == 200
     assert "/static/assets/bootstrap.js" in index_response.text
-    assert "v=3.13.7" in index_response.text
+    assert "v=3.13.8" in index_response.text
     assert "/static/partials/icon-sprite.html" in index_response.text
     assert "/static/partials/auth-shell.html" in index_response.text
     assert "/static/partials/app-shell.html" in index_response.text
 
     bootstrap_js = Path("static/assets/bootstrap.js").read_text(encoding="utf-8")
-    assert 'const appVersion = "3.13.7"' in bootstrap_js
+    assert 'const appVersion = "3.13.8"' in bootstrap_js
 
     for path in [
         "/static/partials/icon-sprite.html",
@@ -78,6 +81,10 @@ def test_product_schema_migration_script_contains_core_tables() -> None:
         "workspaces",
         "data_sources",
         "data_source_credentials",
+        "model_providers",
+        "model_credentials",
+        "model_profiles",
+        "agent_model_bindings",
         "schema_tables",
         "schema_columns",
         "schema_relationships",
@@ -103,3 +110,18 @@ def test_v31352_upgrade_script_expands_chat_message_content() -> None:
 
     assert "alter table chat_messages" in sql
     assert "modify column content longtext not null" in sql
+
+
+def test_v3138_upgrade_script_adds_model_settings_tables() -> None:
+    script_path = Path("scripts/upgrade_product_schema_v3_13_8.sql")
+    sql = script_path.read_text(encoding="utf-8").lower()
+
+    for table_name in [
+        "model_providers",
+        "model_credentials",
+        "model_profiles",
+        "agent_model_bindings",
+    ]:
+        assert f"create table if not exists {table_name}" in sql
+    assert "sql_agent" in sql
+    assert "rag_agent" in sql

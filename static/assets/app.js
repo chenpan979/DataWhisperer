@@ -27,6 +27,7 @@ const state = {
   historyChartInstances: [],
   historyChartRetryCount: 0,
   dataSource: null,
+  modelSettings: null,
   files: {
     schema: [],
     rag: [],
@@ -45,10 +46,14 @@ const defaultSettings = {
   dbName: "datawhisperer_demo",
   dbUser: "root",
   dbPassword: "******",
-  provider: "DashScope",
+  provider: "dashscope",
+  providerName: "DashScope",
+  apiKey: "******",
   baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   chatModel: "qwen-plus",
   embeddingModel: "text-embedding-v4",
+  temperature: "0.1",
+  maxTokens: "2048",
   displayName: "admin",
   role: "数据工作台管理员",
   avatarDataUrl: "",
@@ -277,10 +282,18 @@ const el = {
   settingsTestConnectionButton: document.querySelector("#settingsTestConnectionButton"),
   settingsSyncSchemaButton: document.querySelector("#settingsSyncSchemaButton"),
   settingsSaveDatasourceButton: document.querySelector("#settingsSaveDatasourceButton"),
+  settingsModelState: document.querySelector("#settingsModelState"),
   settingsProvider: document.querySelector("#settingsProvider"),
+  settingsProviderName: document.querySelector("#settingsProviderName"),
   settingsBaseUrl: document.querySelector("#settingsBaseUrl"),
+  settingsApiKey: document.querySelector("#settingsApiKey"),
   settingsChatModel: document.querySelector("#settingsChatModel"),
   settingsEmbeddingModel: document.querySelector("#settingsEmbeddingModel"),
+  settingsTemperature: document.querySelector("#settingsTemperature"),
+  settingsMaxTokens: document.querySelector("#settingsMaxTokens"),
+  settingsModelHint: document.querySelector("#settingsModelHint"),
+  settingsAgentBindingList: document.querySelector("#settingsAgentBindingList"),
+  settingsTestModelButton: document.querySelector("#settingsTestModelButton"),
   settingsProfileAvatar: document.querySelector("#settingsProfileAvatar"),
   settingsProfileName: document.querySelector("#settingsProfileName"),
   settingsProfileRole: document.querySelector("#settingsProfileRole"),
@@ -2532,6 +2545,86 @@ function fillDataSourceForm(dataSource) {
   renderDataSourceState(dataSource);
 }
 
+function settingsFromModelSettings(modelSettings) {
+  const provider = modelSettings?.provider || {};
+  const profile = modelSettings?.profile || {};
+  return {
+    ...readSettingsDraft(),
+    provider: provider.provider_type || defaultSettings.provider,
+    providerName: provider.name || defaultSettings.providerName,
+    apiKey: provider.api_key_saved ? "******" : defaultSettings.apiKey,
+    baseUrl: provider.base_url || defaultSettings.baseUrl,
+    chatModel: profile.chat_model || defaultSettings.chatModel,
+    embeddingModel: profile.embedding_model || defaultSettings.embeddingModel,
+    temperature: String(profile.temperature ?? defaultSettings.temperature),
+    maxTokens: String(profile.max_tokens ?? defaultSettings.maxTokens),
+  };
+}
+
+function renderModelState(modelSettings) {
+  const provider = modelSettings?.provider;
+  if (!provider) {
+    return;
+  }
+  const statusLabel =
+    provider.status === "failed" ? "检测失败" : provider.status === "unknown" ? "未检测" : "已配置";
+  const statusKind = provider.status === "failed" ? "error" : provider.status === "unknown" ? "warning" : "ok";
+  if (el.settingsModelState) {
+    el.settingsModelState.textContent = statusLabel;
+    el.settingsModelState.className = `state-label ${statusKind}`;
+  }
+  if (el.settingsModelHint) {
+    const keyText = provider.api_key_saved
+      ? `API Key 已保存：${provider.api_key_mask || "已脱敏"}。`
+      : "API Key 尚未保存。";
+    const checkText = provider.last_checked_at
+      ? `最近检测：${formatDateTime(provider.last_checked_at)}。`
+      : "尚未检测模型配置。";
+    el.settingsModelHint.textContent = `${keyText} ${checkText}`;
+  }
+}
+
+function renderAgentBindings(bindings = []) {
+  if (!el.settingsAgentBindingList) {
+    return;
+  }
+  if (!bindings.length) {
+    el.settingsAgentBindingList.innerHTML = '<div class="empty-state">模型绑定尚未加载</div>';
+    return;
+  }
+  el.settingsAgentBindingList.innerHTML = bindings
+    .map(
+      (binding) => `
+        <div class="agent-binding-card">
+          <div class="agent-binding-meta">
+            <strong>${escapeHtml(binding.agent_label || binding.agent_key)}</strong>
+            <code>${binding.enabled ? "启用" : "停用"}</code>
+          </div>
+          <span>${escapeHtml(binding.capability_label || binding.capability)}</span>
+          <span>Profile：${escapeHtml(binding.model_profile_name || "默认模型配置")}</span>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function fillModelSettingsForm(modelSettings) {
+  state.modelSettings = modelSettings;
+  const settings = settingsFromModelSettings(modelSettings);
+  writeSettingsDraft(settings);
+  setControlValue(el.settingsProvider, settings.provider);
+  setControlValue(el.settingsProviderName, settings.providerName);
+  setControlValue(el.settingsBaseUrl, settings.baseUrl);
+  setControlValue(el.settingsApiKey, settings.apiKey);
+  setControlValue(el.settingsChatModel, settings.chatModel);
+  setControlValue(el.settingsEmbeddingModel, settings.embeddingModel);
+  setControlValue(el.settingsTemperature, settings.temperature);
+  setControlValue(el.settingsMaxTokens, settings.maxTokens);
+  renderSettingsSummary(settings);
+  renderModelState(modelSettings);
+  renderAgentBindings(modelSettings.agent_bindings || []);
+}
+
 function collectSettingsDraft() {
   return {
     datasourceName: el.settingsDatasourceName?.value.trim() || defaultSettings.datasourceName,
@@ -2542,9 +2635,13 @@ function collectSettingsDraft() {
     dbUser: el.settingsDbUser?.value.trim() || defaultSettings.dbUser,
     dbPassword: el.settingsDbPassword?.value || defaultSettings.dbPassword,
     provider: el.settingsProvider?.value || defaultSettings.provider,
+    providerName: el.settingsProviderName?.value.trim() || defaultSettings.providerName,
+    apiKey: el.settingsApiKey?.value || defaultSettings.apiKey,
     baseUrl: el.settingsBaseUrl?.value.trim() || defaultSettings.baseUrl,
     chatModel: el.settingsChatModel?.value.trim() || defaultSettings.chatModel,
     embeddingModel: el.settingsEmbeddingModel?.value.trim() || defaultSettings.embeddingModel,
+    temperature: el.settingsTemperature?.value.trim() || defaultSettings.temperature,
+    maxTokens: el.settingsMaxTokens?.value.trim() || defaultSettings.maxTokens,
     displayName: el.settingsDisplayName?.value.trim() || defaultSettings.displayName,
     role: el.settingsRole?.value.trim() || defaultSettings.role,
     avatarDataUrl: readSettingsDraft().avatarDataUrl || defaultSettings.avatarDataUrl,
@@ -2566,7 +2663,16 @@ function renderSettingsSummary(settings) {
     el.settingsSummaryDatasource.textContent = settings.datasourceName || defaultSettings.datasourceName;
   }
   if (el.settingsSummaryModel) {
-    el.settingsSummaryModel.textContent = `${settings.provider || defaultSettings.provider} / ${
+    const providerLabel =
+      {
+        dashscope: "DashScope",
+        openai: "OpenAI",
+        deepseek: "DeepSeek",
+        local: "本地兼容服务",
+      }[settings.provider] ||
+      settings.providerName ||
+      defaultSettings.providerName;
+    el.settingsSummaryModel.textContent = `${providerLabel} / ${
       settings.chatModel || defaultSettings.chatModel
     }`;
   }
@@ -2610,9 +2716,13 @@ async function hydrateSettingsForm() {
   setControlValue(el.settingsDbUser, settings.dbUser);
   setControlValue(el.settingsDbPassword, settings.dbPassword);
   setControlValue(el.settingsProvider, settings.provider);
+  setControlValue(el.settingsProviderName, settings.providerName);
   setControlValue(el.settingsBaseUrl, settings.baseUrl);
+  setControlValue(el.settingsApiKey, settings.apiKey);
   setControlValue(el.settingsChatModel, settings.chatModel);
   setControlValue(el.settingsEmbeddingModel, settings.embeddingModel);
+  setControlValue(el.settingsTemperature, settings.temperature);
+  setControlValue(el.settingsMaxTokens, settings.maxTokens);
   setControlValue(el.settingsDisplayName, settings.displayName);
   setControlValue(el.settingsRole, settings.role);
   setControlValue(el.settingsLanguage, settings.language);
@@ -2625,9 +2735,15 @@ async function hydrateSettingsForm() {
   try {
     const dataSource = await fetchJson("/api/data-sources/default");
     fillDataSourceForm(dataSource);
-    setSettingsStatus("后端配置已加载", "ok");
   } catch (error) {
     setSettingsStatus(`数据源配置加载失败：${error.message}`, "error");
+  }
+  try {
+    const modelSettings = await fetchJson("/api/model-settings/default");
+    fillModelSettingsForm(modelSettings);
+    setSettingsStatus("后端配置已加载", "ok");
+  } catch (error) {
+    setSettingsStatus(`模型配置加载失败：${error.message}`, "error");
   }
 }
 
@@ -2687,6 +2803,105 @@ async function syncDataSourceSchema() {
     }
   } finally {
     button.disabled = false;
+  }
+}
+
+function collectModelSettingsPayload() {
+  return {
+    provider_name: el.settingsProviderName?.value.trim() || defaultSettings.providerName,
+    provider_type: el.settingsProvider?.value || defaultSettings.provider,
+    base_url: el.settingsBaseUrl?.value.trim() || defaultSettings.baseUrl,
+    api_key: el.settingsApiKey?.value || "******",
+    profile_name: state.modelSettings?.profile?.name || "默认模型配置",
+    chat_model: el.settingsChatModel?.value.trim() || defaultSettings.chatModel,
+    embedding_model: el.settingsEmbeddingModel?.value.trim() || defaultSettings.embeddingModel,
+    temperature: Number(el.settingsTemperature?.value || defaultSettings.temperature),
+    max_tokens: Number(el.settingsMaxTokens?.value || defaultSettings.maxTokens),
+  };
+}
+
+async function saveModelSettings() {
+  if (!el.settingsSaveModelButton) {
+    return;
+  }
+  const button = el.settingsSaveModelButton;
+  const buttonText = button.querySelector("span");
+  const originalText = buttonText?.textContent || "保存模型配置";
+  button.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "保存中";
+  }
+  setSettingsStatus("正在保存模型配置", "warning");
+  try {
+    const modelSettings = await fetchJson("/api/model-settings/default", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectModelSettingsPayload()),
+    });
+    fillModelSettingsForm(modelSettings);
+    setSettingsStatus("模型配置已保存", "ok");
+    markButtonDone(button, "已保存");
+  } catch (error) {
+    setSettingsStatus(`保存失败：${error.message}`, "error");
+    if (buttonText) {
+      buttonText.textContent = originalText;
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function testModelSettings() {
+  if (!el.settingsTestModelButton) {
+    return;
+  }
+  const button = el.settingsTestModelButton;
+  const buttonText = button.querySelector("span");
+  const originalText = buttonText?.textContent || "测试配置";
+  button.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "检测中";
+  }
+  setSettingsStatus("正在检测模型配置", "warning");
+  if (el.settingsModelState) {
+    el.settingsModelState.textContent = "检测中";
+    el.settingsModelState.className = "state-label warning";
+  }
+  try {
+    const result = await fetchJson("/api/model-settings/default/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectModelSettingsPayload()),
+    });
+    const modelSettings = await fetchJson("/api/model-settings/default");
+    fillModelSettingsForm(modelSettings);
+    if (el.settingsModelHint) {
+      el.settingsModelHint.textContent = `${result.message} 耗时 ${result.latency_ms}ms。`;
+    }
+    if (el.settingsModelState) {
+      el.settingsModelState.textContent = result.ok ? "已配置" : "检测失败";
+      el.settingsModelState.className = `state-label ${result.ok ? "ok" : "error"}`;
+    }
+    setSettingsStatus(result.ok ? "模型配置正常" : "模型配置异常", result.ok ? "ok" : "error");
+    if (buttonText) {
+      buttonText.textContent = result.ok ? "检测通过" : "检测失败";
+      setTimeout(() => {
+        if (buttonText.textContent === "检测通过" || buttonText.textContent === "检测失败") {
+          buttonText.textContent = originalText;
+        }
+      }, 1200);
+    }
+  } catch (error) {
+    setSettingsStatus(`检测失败：${error.message}`, "error");
+    if (el.settingsModelState) {
+      el.settingsModelState.textContent = "检测失败";
+      el.settingsModelState.className = "state-label error";
+    }
+  } finally {
+    button.disabled = false;
+    if (buttonText && buttonText.textContent === "检测中") {
+      buttonText.textContent = originalText;
+    }
   }
 }
 
@@ -4740,7 +4955,8 @@ function bindEvents() {
   el.settingsTestConnectionButton?.addEventListener("click", testSettingsConnectionApi);
   el.settingsSyncSchemaButton?.addEventListener("click", syncDataSourceSchema);
   el.settingsSaveDatasourceButton?.addEventListener("click", saveDataSourceSettings);
-  el.settingsSaveModelButton?.addEventListener("click", () => saveSettingsDraft(el.settingsSaveModelButton, "模型配置"));
+  el.settingsTestModelButton?.addEventListener("click", testModelSettings);
+  el.settingsSaveModelButton?.addEventListener("click", saveModelSettings);
   el.settingsSaveProfileButton?.addEventListener("click", () =>
     saveSettingsDraft(el.settingsSaveProfileButton, "账户偏好"),
   );

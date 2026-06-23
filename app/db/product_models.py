@@ -178,6 +178,10 @@ class Workspace(ProductBase, TimestampMixin):
         back_populates="workspace",
         cascade="all, delete-orphan",
     )
+    model_providers: Mapped[list[ModelProvider]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
     conversations: Mapped[list[Conversation]] = relationship(back_populates="workspace")
 
 
@@ -285,6 +289,170 @@ class DataSourceCredential(ProductBase, TimestampMixin):
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     data_source: Mapped[DataSource] = relationship(back_populates="credential")
+
+
+class ModelProvider(ProductBase, TimestampMixin):
+    """模型供应商配置。
+
+    供应商负责描述一个 OpenAI-compatible 网关，例如 DashScope、OpenAI、
+    DeepSeek 或公司内部模型服务。API Key 单独放在 `model_credentials`，
+    便于后续接入 KMS、Vault 或租户级密钥托管。
+    """
+
+    __tablename__ = "model_providers"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uk_model_providers_workspace_name"),
+        Index("idx_model_providers_tenant", "tenant_id"),
+        Index("idx_model_providers_workspace_status", "workspace_id", "status"),
+        Index("idx_model_providers_created_by", "created_by"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_type: Mapped[str] = mapped_column(String(32), nullable=False, default="dashscope")
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="configured")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    workspace: Mapped[Workspace] = relationship(back_populates="model_providers")
+    credential: Mapped[ModelCredential | None] = relationship(
+        back_populates="provider",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    profiles: Mapped[list[ModelProfile]] = relationship(
+        back_populates="provider",
+        cascade="all, delete-orphan",
+    )
+
+
+class ModelCredential(ProductBase, TimestampMixin):
+    """模型供应商密钥。"""
+
+    __tablename__ = "model_credentials"
+    __table_args__ = (
+        UniqueConstraint("provider_id", name="uk_model_credentials_provider"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    provider_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("model_providers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    key_mask: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    encryption_version: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="local-demo",
+    )
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    provider: Mapped[ModelProvider] = relationship(back_populates="credential")
+
+
+class ModelProfile(ProductBase, TimestampMixin):
+    """模型调用 Profile。
+
+    Profile 描述一次模型调用需要的模型名、温度、最大 token 等参数。
+    后续多 Agent 不直接绑供应商，而是绑 Profile，这样可以做到多个 Agent
+    共用一个模型，也可以让每个 Agent 独立使用不同模型。
+    """
+
+    __tablename__ = "model_profiles"
+    __table_args__ = (
+        UniqueConstraint("provider_id", "name", name="uk_model_profiles_provider_name"),
+        Index("idx_model_profiles_workspace_default", "workspace_id", "is_default"),
+        Index("idx_model_profiles_tenant", "tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("model_providers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    chat_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    temperature: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False, default=Decimal("0.100"))
+    max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    config_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    provider: Mapped[ModelProvider] = relationship(back_populates="profiles")
+    agent_bindings: Mapped[list[AgentModelBinding]] = relationship(back_populates="profile")
+
+
+class AgentModelBinding(ProductBase, TimestampMixin):
+    """Agent 与模型 Profile 的绑定关系。
+
+    首版先记录 SQL 生成、分析总结、图表推荐、RAG Embedding 等能力使用哪个
+    Profile。后面如果升级成多智能体编排，这张表可以直接扩展为每个 Agent
+    独立配置模型、参数和开关。
+    """
+
+    __tablename__ = "agent_model_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "agent_key",
+            "capability",
+            name="uk_agent_model_bindings_workspace_agent_capability",
+        ),
+        Index("idx_agent_model_bindings_profile", "model_profile_id"),
+        Index("idx_agent_model_bindings_tenant_workspace", "tenant_id", "workspace_id"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    capability: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_profile_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("model_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    params_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    profile: Mapped[ModelProfile] = relationship(back_populates="agent_bindings")
 
 
 class SchemaTable(ProductBase, TimestampMixin):
