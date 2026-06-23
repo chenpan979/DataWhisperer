@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.api.auth import AuthContext, require_auth_context
@@ -16,26 +17,51 @@ from app.models.conversations import (
     ConversationUpdate,
 )
 from app.models.query import QueryRequest, QueryResponse
+from app.tools.data_source_engine import get_default_data_source_engine
 from app.tools.database_conversation_store import DatabaseConversationStore
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/query", response_model=QueryResponse)
-async def query_data(request: QueryRequest) -> QueryResponse:
+async def query_data(
+    request: QueryRequest,
+    authorization: Annotated[str | None, Header()] = None,
+    session: Session = Depends(get_product_session),
+) -> QueryResponse:
     """执行一次自然语言数据分析请求。
 
     API 层保持薄层设计：只负责接收请求、组装依赖、调用 Orchestrator、
     把异常转换成 HTTP 响应。具体业务流程放在 agent/tools 层。
     """
 
-    orchestrator = DataAnalysisOrchestrator(engine=get_engine(), llm=get_llm_client())
     try:
+        engine = _build_query_engine(authorization=authorization, session=session)
+        orchestrator = DataAnalysisOrchestrator(engine=engine, llm=get_llm_client())
         return await orchestrator.run(request)
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - depends on external services
         raise HTTPException(status_code=500, detail=f"Query failed: {exc}") from exc
+
+
+def _build_query_engine(*, authorization: str | None, session: Session) -> Engine:
+    """为 AI 查数选择业务数据库连接。
+
+    登录态下，AI 查数必须和系统设置里的默认数据源保持一致；未登录访问时，
+    继续使用 `.env` 中的 `DATABASE_URL`，方便本地调试和接口文档演示。
+    """
+
+    if not authorization:
+        return get_engine()
+    auth_context = require_auth_context(authorization=authorization, session=session)
+    return get_default_data_source_engine(
+        session=session,
+        auth_context=auth_context,
+        fallback_engine_factory=get_engine,
+    )
 
 
 def _conversation_store(
