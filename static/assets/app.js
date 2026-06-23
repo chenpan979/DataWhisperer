@@ -1294,23 +1294,16 @@ function archiveCurrentTurn() {
     return;
   }
 
-  const chartSnapshot = createChartSnapshot();
   const archivedUser = cloneAsHistoryNode(el.userMessage);
   const archivedAssistant = cloneAsHistoryNode(el.assistantResultMessage);
 
-  if (chartSnapshot) {
-    const archivedChartHost = archivedAssistant.querySelector(".chart-host");
-    if (archivedChartHost) {
-      archivedChartHost.classList.remove("empty-chart");
-      archivedChartHost.innerHTML = `<img class="chart-history-image" src="${chartSnapshot}" alt="上一轮分析图表" />`;
-    }
-  }
+  hydrateHistorySnapshotNode(archivedAssistant, state.lastResponse || {}, { allowLiveChartSnapshot: true });
 
   archivedAssistant.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
-  archivedAssistant.querySelectorAll(".result-actions, .code-actions, .result-detail-bar").forEach((node) => {
+  archivedAssistant.querySelectorAll(".result-actions, .code-actions").forEach((node) => {
     node.hidden = true;
   });
-  archivedAssistant.querySelectorAll("button").forEach((button) => {
+  archivedAssistant.querySelectorAll(".result-actions button, .code-actions button").forEach((button) => {
     button.disabled = true;
     button.setAttribute("aria-disabled", "true");
   });
@@ -1358,11 +1351,15 @@ function createAssistantSnapshotHtml(data) {
     sqlPanel.dataset.detailPanel = "sql";
   }
 
-  if (chartSnapshot) {
-    const chartHost = clone.querySelector("#chartHost");
-    if (chartHost) {
-      chartHost.classList.remove("empty-chart");
+  const chartHost = clone.querySelector("#chartHost");
+  if (chartHost) {
+    chartHost.classList.remove("empty-chart");
+    if (chartSnapshot) {
       chartHost.innerHTML = `<img class="chart-history-image" src="${chartSnapshot}" alt="历史分析图表" />`;
+    } else if (shouldUseChartSnapshot) {
+      chartHost.innerHTML = '<div class="empty-state">暂无图表</div>';
+    } else {
+      chartHost.innerHTML = "";
     }
   }
 
@@ -1449,7 +1446,7 @@ function createHistoryUserNode(turn) {
 }
 
 function createHistoryAssistantNode(turn) {
-  if (turn.assistantHtml && !hasFullTurnSnapshot(turn)) {
+  if (turn.assistantHtml) {
     return createHistoryAssistantSnapshotNode(turn);
   }
 
@@ -1483,7 +1480,29 @@ function createHistoryAssistantSnapshotNode(turn) {
   article.classList.add("archived-turn", "conversation-history-turn", "snapshot-history-turn");
   article.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
   article.querySelectorAll(".analysis-thinking").forEach((node) => node.remove());
+  hydrateHistorySnapshotNode(article, turn);
   return article;
+}
+
+function hydrateHistorySnapshotNode(article, turn, options = {}) {
+  const chartHost = article.querySelector(".chart-host");
+  if (!chartHost) {
+    return;
+  }
+
+  const chartOption = turn.chart || {};
+  const rows = Array.isArray(turn.rows) ? turn.rows : [];
+  if (!hasStructuredChartPayload(chartOption, rows)) {
+    const chartSnapshot = options.allowLiveChartSnapshot ? createChartSnapshot() : "";
+    if (chartSnapshot && !chartHost.querySelector(".chart-history-image")) {
+      chartHost.classList.remove("empty-chart");
+      chartHost.innerHTML = `<img class="chart-history-image" src="${chartSnapshot}" alt="历史分析图表" />`;
+    }
+    return;
+  }
+
+  chartHost.classList.remove("empty-chart");
+  chartHost.innerHTML = createHistoryChartCanvasMarkup(chartOption);
 }
 
 function hasFullTurnSnapshot(turn) {
@@ -1568,6 +1587,15 @@ function renderHistoryChart(chartOption = {}, rows = [], columns = []) {
   }
 
   const title = chartOption.title?.text || "历史图表";
+  return `
+    <figure class="history-chart-card">
+      <figcaption>${escapeHtml(title)}</figcaption>
+      ${createHistoryChartCanvasMarkup(chartOption)}
+    </figure>
+  `;
+}
+
+function createHistoryChartCanvasMarkup(chartOption = {}) {
   const chartId = `history-chart-${Math.random().toString(36).slice(2)}`;
   state.historyChartOptions.set(chartId, chartOption);
   const encodedOption = encodeURIComponent(JSON.stringify(chartOption));
@@ -1575,15 +1603,12 @@ function renderHistoryChart(chartOption = {}, rows = [], columns = []) {
   const renderedAttr = inlineFallback ? ' data-rendered="true"' : "";
 
   return `
-    <figure class="history-chart-card">
-      <figcaption>${escapeHtml(title)}</figcaption>
-      <div
-        class="history-echart"
-        data-history-chart-id="${escapeHtml(chartId)}"
-        data-history-chart-option="${escapeHtml(encodedOption)}"
-        ${renderedAttr}
-      >${inlineFallback}</div>
-    </figure>
+    <div
+      class="history-echart"
+      data-history-chart-id="${escapeHtml(chartId)}"
+      data-history-chart-option="${escapeHtml(encodedOption)}"
+      ${renderedAttr}
+    >${inlineFallback}</div>
   `;
 }
 
