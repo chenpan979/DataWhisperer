@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -8,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
+import app.api.model_settings as model_settings_api  # noqa: E402
 from app.core.product_database import ProductBase, get_product_session  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.repositories.product import (  # noqa: E402
@@ -141,6 +143,49 @@ def test_model_settings_can_be_loaded_saved_tested_and_bound(
         assert provider.credential.encrypted_api_key.startswith("local-demo:")
         assert repository.get_default_profile(workspace_id=1).chat_model == "qwen-max"
         assert len(repository.list_bindings(workspace_id=1)) == 4
+
+
+def test_model_settings_backfills_env_api_key_for_existing_provider(
+    model_settings_client: tuple[TestClient, sessionmaker[Session]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """升级脚本先建 provider 时，接口应从运行配置补齐密钥。"""
+
+    client, session_factory = model_settings_client
+    headers = _seed_product_workspace_and_login(client, session_factory)
+    with session_factory() as session:
+        repository = ModelSettingsRepository(session)
+        repository.create_provider(
+            tenant_id=1,
+            workspace_id=1,
+            name="DashScope",
+            provider_type="dashscope",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            created_by=1,
+        )
+        session.commit()
+
+    monkeypatch.setattr(
+        model_settings_api,
+        "get_settings",
+        lambda: SimpleNamespace(
+            effective_llm_api_key="sk-env-demo-key",
+            effective_llm_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            effective_llm_model="qwen-plus",
+            dashscope_embedding_model="text-embedding-v4",
+            llm_temperature=0.1,
+        ),
+    )
+
+    response = client.get("/api/model-settings/default", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"]["api_key_saved"] is True
+    assert payload["provider"]["api_key_mask"] == "sk-****-key"
+
+    with session_factory() as session:
+        provider = ModelSettingsRepository(session).get_default_provider(workspace_id=1)
+        assert provider.credential.encrypted_api_key.startswith("local-demo:")
 
 
 def _seed_product_workspace_and_login(

@@ -6,12 +6,13 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.auth import AuthContext, require_auth_context
 from app.core.config import get_settings
 from app.core.product_database import get_product_session
-from app.db.product_models import ModelProfile, ModelProvider
+from app.db.product_models import ModelCredential, ModelProfile, ModelProvider
 from app.models.model_settings import (
     AgentModelBindingPayload,
     AgentModelBindingUpdateRequest,
@@ -227,6 +228,13 @@ def _ensure_default_model_settings(
                 key_mask=_mask_secret(settings.effective_llm_api_key),
             )
 
+    if provider.credential is None and settings.effective_llm_api_key:
+        repository.save_credential(
+            provider_id=provider.id,
+            encrypted_api_key=_encode_demo_secret(settings.effective_llm_api_key),
+            key_mask=_mask_secret(settings.effective_llm_api_key),
+        )
+
     profile = repository.get_default_profile(workspace_id=auth_context.workspace.id)
     if profile is None:
         profile = repository.create_profile(
@@ -281,7 +289,9 @@ def _build_model_settings_payload(
 ) -> ModelSettingsPayload:
     repository = ModelSettingsRepository(session)
     bindings = repository.list_bindings(workspace_id=provider.workspace_id)
-    credential = provider.credential
+    credential = provider.credential or session.scalar(
+        select(ModelCredential).where(ModelCredential.provider_id == provider.id)
+    )
     return ModelSettingsPayload(
         provider=ModelProviderPayload(
             id=provider.id,
