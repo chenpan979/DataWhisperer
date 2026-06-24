@@ -137,6 +137,7 @@ const fileManagers = {
     previewTitle: "#ragPreviewTitle",
     previewBlock: "#ragPreviewBlock",
     defaultPreview: "选择左侧文件后查看内容。",
+    syncable: true,
     emptyTitle: "还没有知识库资料",
     emptyDescription: "上传业务口径、FAQ 或分析规则后，这里会展示可用于检索增强的资料。",
   },
@@ -3986,12 +3987,13 @@ function selectEvaluationDataset(fileId) {
 function renderManagedFiles(category) {
   const config = fileManagers[category];
   const files = state.files[category] || [];
+  const hasSyncColumn = Boolean(config.syncable);
   document.querySelector(config.count).textContent = `${files.length} 个文件`;
   const table = document.querySelector(config.table);
   if (!files.length) {
     table.innerHTML = `
       <tr class="empty-row">
-        <td colspan="5">
+        <td colspan="${hasSyncColumn ? 6 : 5}">
           <div class="manager-empty">
             <div class="manager-empty-icon">
               <svg><use href="#icon-file-text"></use></svg>
@@ -4006,28 +4008,94 @@ function renderManagedFiles(category) {
   }
 
   table.innerHTML = files
-    .map(
-      (file) => `
+    .map((file) => {
+      const syncCell = hasSyncColumn ? `<td>${renderFileSyncState(file)}</td>` : "";
+      const syncAction = hasSyncColumn
+        ? `
+          <button class="icon-button" type="button" data-action="sync" data-id="${escapeHtml(file.id)}" title="同步到 Milvus">
+            <svg><use href="#icon-refresh"></use></svg>
+          </button>
+        `
+        : "";
+      return `
         <tr>
           <td><div class="file-name-cell" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div></td>
           <td><span class="file-type-badge">${escapeHtml((file.extension || "-").toUpperCase())}</span></td>
           <td>${escapeHtml(formatBytes(file.size_bytes))}</td>
           <td>${escapeHtml(formatDate(file.uploaded_at))}</td>
+          ${syncCell}
           <td>
             <div class="file-actions">
               <button class="icon-button" type="button" data-action="preview" data-id="${escapeHtml(file.id)}" title="预览">
                 <svg><use href="#icon-eye"></use></svg>
               </button>
+              ${syncAction}
               <button class="danger-button icon-only" type="button" data-action="delete" data-id="${escapeHtml(file.id)}" title="删除">
                 <svg><use href="#icon-trash"></use></svg>
               </button>
             </div>
           </td>
         </tr>
-      `,
-    )
+      `;
+    })
     .join("");
 }
+
+function renderFileSyncState(file) {
+  const status = file.sync_status || "pending";
+  const chunkText = file.sync_chunk_count ? `${file.sync_chunk_count} 片` : "未切片";
+  const collection = file.sync_collection ? ` · ${file.sync_collection}` : "";
+  const message = file.sync_message || "上传后会自动尝试同步到 Milvus。";
+  return `
+    <div class="file-sync-cell" title="${escapeHtml(message)}${escapeHtml(collection)}">
+      <span class="file-sync-badge ${escapeHtml(status)}">
+        <i aria-hidden="true"></i>
+        ${escapeHtml(fileSyncLabel(status))}
+      </span>
+      <small>${escapeHtml(chunkText)}</small>
+    </div>
+  `;
+}
+
+function fileSyncLabel(status) {
+  if (status === "synced") {
+    return "已同步";
+  }
+  if (status === "failed") {
+    return "失败";
+  }
+  if (status === "skipped") {
+    return "已跳过";
+  }
+  return "待同步";
+}
+
+function fileSyncSummary(file) {
+  if (!file?.sync_status) {
+    return "上传完成";
+  }
+  if (file.sync_status === "synced") {
+    return `已同步 ${file.sync_chunk_count || 0} 个切片`;
+  }
+  if (file.sync_status === "failed") {
+    return "向量同步失败，可点击同步重试";
+  }
+  if (file.sync_status === "skipped") {
+    return "文件已保存，暂不支持自动切片";
+  }
+  return "上传完成";
+}
+
+function fileSyncStateClass(status) {
+  if (status === "synced" || status === "skipped") {
+    return "ok";
+  }
+  if (status === "failed") {
+    return "error";
+  }
+  return "";
+}
+
 async function uploadManagedFile(category, file) {
   if (!file) {
     return;
@@ -4035,14 +4103,18 @@ async function uploadManagedFile(category, file) {
   const config = fileManagers[category];
   const formData = new FormData();
   formData.append("file", file);
-  setFileState(category, "上传中");
+  setFileState(category, category === "rag" ? "上传并同步中" : "上传中");
   try {
-    await fetchJson(config.endpoint, {
+    const uploadedFile = await fetchJson(config.endpoint, {
       method: "POST",
       body: formData,
     });
-    setFileState(category, "上传完成", "ok");
     await loadManagedFiles(category);
+    if (category === "rag") {
+      setFileState(category, fileSyncSummary(uploadedFile), fileSyncStateClass(uploadedFile.sync_status));
+    } else {
+      setFileState(category, "上传完成", "ok");
+    }
   } catch (error) {
     setFileState(category, error.message, "error");
   } finally {
@@ -4082,6 +4154,21 @@ async function deleteManagedFile(category, fileId) {
     resetPreview(category);
     await loadManagedFiles(category);
     setFileState(category, "已删除", "ok");
+  } catch (error) {
+    setFileState(category, error.message, "error");
+  }
+}
+
+async function syncManagedFile(category, fileId) {
+  if (category !== "rag") {
+    return;
+  }
+  const config = fileManagers[category];
+  setFileState(category, "同步中");
+  try {
+    const syncedFile = await fetchJson(`${config.endpoint}/${fileId}/sync`, { method: "POST" });
+    await loadManagedFiles(category);
+    setFileState(category, fileSyncSummary(syncedFile), fileSyncStateClass(syncedFile.sync_status));
   } catch (error) {
     setFileState(category, error.message, "error");
   }
@@ -5333,6 +5420,9 @@ function bindEvents() {
       }
       if (button.dataset.action === "preview") {
         previewManagedFile(category, button.dataset.id);
+      }
+      if (button.dataset.action === "sync") {
+        syncManagedFile(category, button.dataset.id);
       }
       if (button.dataset.action === "delete") {
         deleteManagedFile(category, button.dataset.id);

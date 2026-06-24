@@ -55,3 +55,29 @@ def test_managed_file_store_ignores_unsafe_file_id(tmp_path) -> None:
 
     assert store.delete("../outside") is False
     assert store.preview("../outside") is None
+
+
+def test_managed_file_store_updates_sync_metadata(tmp_path) -> None:
+    store = ManagedFileStore(
+        FileStoreConfig(
+            category="rag",
+            directory=tmp_path,
+            allowed_extensions=frozenset({".md"}),
+        )
+    )
+
+    saved = store.save(original_name="metrics.md", content="GMV 指标说明".encode("utf-8"))
+    updated = store.update_metadata(
+        saved.id,
+        {
+            "sync_status": "synced",
+            "sync_message": "已切分 1 个片段并同步到 Milvus。",
+            "sync_collection": "datawhisperer_rag_documents",
+            "sync_chunk_count": 1,
+            "synced_at": "2026-06-24T00:00:00+00:00",
+        },
+    )
+
+    assert updated is not None
+    assert updated.sync_status == "synced"
+    assert store.list_files()[0].sync_chunk_count == 1

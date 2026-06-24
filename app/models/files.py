@@ -10,6 +10,11 @@ class ManagedFile(BaseModel):
     extension: str = Field(description="文件扩展名。")
     uploaded_at: str = Field(description="上传时间，ISO 8601 字符串。")
     previewable: bool = Field(description="当前文件是否支持文本预览。")
+    sync_status: str | None = Field(default=None, description="RAG 文件同步到向量库的状态。")
+    sync_message: str | None = Field(default=None, description="最近一次同步说明或失败原因。")
+    sync_collection: str | None = Field(default=None, description="RAG 文件写入的 Milvus collection。")
+    sync_chunk_count: int | None = Field(default=None, description="最近一次同步写入的切片数量。")
+    synced_at: str | None = Field(default=None, description="最近一次同步完成时间。")
 
 
 class ManagedFileList(BaseModel):

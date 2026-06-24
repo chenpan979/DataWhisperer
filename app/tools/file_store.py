@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from app.models.files import FilePreview, ManagedFile
 
@@ -49,7 +50,8 @@ class ManagedFileStore:
     """本地文件管理工具。
 
     V3.5 的页面上传先落到本地 storage 目录，形成一个稳定的“资料管理台”。
-    后续可以在这个基础上继续做 CSV 入库、schema 自动解析、RAG 切片和 Milvus 索引同步。
+    V3.13.11 开始，RAG 知识库文件上传后会把同步状态写回元数据，
+    前端可以直接看到文件是否已经完成 Milvus 向量索引。
     """
 
     def __init__(self, config: FileStoreConfig):
@@ -95,9 +97,14 @@ class ManagedFileStore:
             "uploaded_at": datetime.now(UTC).isoformat(),
             "stored_name": stored_name,
             "previewable": extension in TEXT_PREVIEW_EXTENSIONS,
+            "sync_status": None,
+            "sync_message": None,
+            "sync_collection": None,
+            "sync_chunk_count": None,
+            "synced_at": None,
         }
         self._meta_path(file_id).write_text(json.dumps(metadata, ensure_ascii=False, indent=2), "utf-8")
-        return ManagedFile(**{key: metadata[key] for key in ManagedFile.model_fields})
+        return _managed_file_from_metadata(metadata)
 
     def delete(self, file_id: str) -> bool:
         """删除文件和元数据。"""
@@ -135,6 +142,37 @@ class ManagedFileStore:
             previewable=True,
         )
 
+    def get(self, file_id: str) -> ManagedFile | None:
+        """读取单个文件元数据。"""
+
+        metadata = self._read_metadata(file_id)
+        if not metadata:
+            return None
+        file_path = self._resolve_file(metadata["stored_name"])
+        if not file_path.exists():
+            return None
+        metadata["size_bytes"] = file_path.stat().st_size
+        return _managed_file_from_metadata(metadata)
+
+    def update_metadata(self, file_id: str, values: dict[str, Any]) -> ManagedFile | None:
+        """更新文件展示元数据。
+
+        目前主要给 RAG 同步流程写入 sync_status、chunk_count 等字段。
+        只允许更新 ManagedFile 暴露的字段，避免误把内部路径信息改坏。
+        """
+
+        metadata = self._read_metadata(file_id)
+        if not metadata:
+            return None
+        for key, value in values.items():
+            if key in ManagedFile.model_fields:
+                metadata[key] = value
+        self._meta_path(file_id).write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+            "utf-8",
+        )
+        return _managed_file_from_metadata(metadata)
+
     def read_text_file(self, file_id: str) -> tuple[ManagedFile, str] | None:
         """读取文本文件完整内容，用于后续解析评测集或知识库资料。"""
 
@@ -142,7 +180,7 @@ class ManagedFileStore:
         if not metadata or not metadata.get("previewable"):
             return None
         file_path = self._resolve_file(metadata["stored_name"])
-        file = ManagedFile(**{key: metadata[key] for key in ManagedFile.model_fields})
+        file = _managed_file_from_metadata(metadata)
         return file, file_path.read_text("utf-8-sig", errors="replace")
 
     def _load_metadata(self, meta_path: Path) -> ManagedFile | None:
@@ -153,7 +191,7 @@ class ManagedFileStore:
                 return None
             metadata["size_bytes"] = file_path.stat().st_size
             metadata["previewable"] = _is_previewable(metadata)
-            return ManagedFile(**{key: metadata[key] for key in ManagedFile.model_fields})
+            return _managed_file_from_metadata(metadata)
         except (OSError, json.JSONDecodeError, KeyError, ValueError):
             return None
 
@@ -179,6 +217,16 @@ class ManagedFileStore:
             raise ValueError("文件路径不安全。")
         return path
 
+
+
+def _managed_file_from_metadata(metadata: dict[str, Any]) -> ManagedFile:
+    """把元数据转换成前端响应模型。
+
+    旧版本已经上传的文件没有 sync_* 字段，这里统一使用 `dict.get`，
+    让历史元数据可以无缝升级，不需要额外迁移本地 JSON 文件。
+    """
+
+    return ManagedFile(**{key: metadata.get(key) for key in ManagedFile.model_fields})
 
 def _sanitize_filename(filename: str) -> str:
     """清理文件名，避免路径穿越和奇怪控制字符。"""

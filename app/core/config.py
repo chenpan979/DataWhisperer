@@ -44,8 +44,12 @@ class Settings(BaseSettings):
     metric_retrieval_provider: str = "local"
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_metric_collection: str = "datawhisperer_metrics"
+    milvus_rag_collection: str = "datawhisperer_rag_documents"
     milvus_embedding_dim: int = 1024
     milvus_auto_fallback: bool = True
+
+    rag_chunk_size: int = 800
+    rag_chunk_overlap: int = 120
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -103,6 +107,16 @@ class Settings(BaseSettings):
         if self.embedding_provider.casefold() == "dashscope":
             return self.dashscope_embedding_dimension
         return self.milvus_embedding_dim
+
+    @property
+    def rag_embedding_dimension(self) -> int:
+        """返回 RAG 文档向量索引使用的维度。
+
+        首版 RAG 文件索引和指标口径索引共用同一套 embedding 配置，
+        后续如果不同 Agent 需要独立模型，可以在这里拆成单独配置项。
+        """
+
+        return self.metric_embedding_dimension
 
 
 @lru_cache

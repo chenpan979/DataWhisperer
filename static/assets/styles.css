@@ -2640,6 +2640,11 @@ td {
   width: 88px;
 }
 
+.file-table th:nth-last-child(2),
+.file-table td:nth-last-child(2) {
+  width: 128px;
+}
+
 .file-name-cell {
   color: var(--text);
   font-weight: 700;
@@ -2665,6 +2670,60 @@ td {
   font-weight: 750;
   line-height: 1;
   padding: 5px 8px;
+}
+
+.file-sync-cell {
+  align-items: flex-start;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 104px;
+}
+
+.file-sync-cell small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.file-sync-badge {
+  align-items: center;
+  background: #f2f5f4;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #53615c;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 750;
+  gap: 6px;
+  line-height: 1;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.file-sync-badge i {
+  background: currentColor;
+  border-radius: 999px;
+  height: 6px;
+  width: 6px;
+}
+
+.file-sync-badge.synced {
+  background: #e8f8f2;
+  border-color: #bee8d7;
+  color: var(--accent-strong);
+}
+
+.file-sync-badge.failed {
+  background: #fff4f2;
+  border-color: #f2b8b0;
+  color: var(--danger);
+}
+
+.file-sync-badge.skipped {
+  background: #fff8e8;
+  border-color: #f0d28e;
+  color: #946200;
 }
 
 .danger-button {
