@@ -20,6 +20,8 @@ def test_app_routes_exist() -> None:
     assert "/api/auth/login" in paths
     assert "/api/auth/register" in paths
     assert "/api/auth/me" in paths
+    assert "/api/account/preferences" in paths
+    assert "/api/account/password" in paths
     assert "/api/examples" in paths
     assert "/api/data-sources/default" in paths
     assert "/api/data-sources/default/test" in paths
@@ -51,13 +53,13 @@ def test_console_static_fragments_are_served() -> None:
     index_response = client.get("/")
     assert index_response.status_code == 200
     assert "/static/assets/bootstrap.js" in index_response.text
-    assert "v=3.13.8.1" in index_response.text
+    assert "v=3.13.9" in index_response.text
     assert "/static/partials/icon-sprite.html" in index_response.text
     assert "/static/partials/auth-shell.html" in index_response.text
     assert "/static/partials/app-shell.html" in index_response.text
 
     bootstrap_js = Path("static/assets/bootstrap.js").read_text(encoding="utf-8")
-    assert 'const appVersion = "3.13.8.1"' in bootstrap_js
+    assert 'const appVersion = "3.13.9"' in bootstrap_js
 
     for path in [
         "/static/partials/icon-sprite.html",
@@ -77,6 +79,7 @@ def test_product_schema_migration_script_contains_core_tables() -> None:
     for table_name in [
         "tenants",
         "users",
+        "user_preferences",
         "tenant_memberships",
         "workspaces",
         "data_sources",
@@ -125,3 +128,12 @@ def test_v3138_upgrade_script_adds_model_settings_tables() -> None:
         assert f"create table if not exists {table_name}" in sql
     assert "sql_agent" in sql
     assert "rag_agent" in sql
+
+
+def test_v3139_upgrade_script_adds_account_preferences() -> None:
+    script_path = Path("scripts/upgrade_product_schema_v3_13_9.sql")
+    sql = script_path.read_text(encoding="utf-8").lower()
+
+    assert "create table if not exists user_preferences" in sql
+    assert "modify column avatar_url longtext null" in sql
+    assert "uk_user_preferences_tenant_user" in sql

@@ -28,6 +28,7 @@ const state = {
   historyChartRetryCount: 0,
   dataSource: null,
   modelSettings: null,
+  accountPreferences: null,
   files: {
     schema: [],
     rag: [],
@@ -367,6 +368,7 @@ function normalizeAuthSession(session) {
     account: session.account || "",
     role: session.role || "数据工作台管理员",
     avatarUrl: session.avatarUrl || "",
+    defaultView: session.defaultView || defaultSettings.defaultView,
     createdAt: session.createdAt || Date.now(),
     remember: session.remember !== false,
   };
@@ -390,6 +392,7 @@ function normalizeServerAuthSession(payload) {
     account: payload.user.email,
     role: payload.user.role,
     avatarUrl: payload.user.avatar_url || "",
+    defaultView: defaultSettings.defaultView,
     createdAt: Date.now(),
   };
 }
@@ -438,7 +441,7 @@ function renderAuthUser() {
     ...readSettingsDraft(),
     displayName: auth.displayName,
     role: auth.role,
-    avatarDataUrl: auth.avatarUrl || readSettingsDraft().avatarDataUrl,
+    avatarDataUrl: auth.avatarUrl || "",
   };
   renderProfileSettings(settings);
 }
@@ -2625,6 +2628,63 @@ function fillModelSettingsForm(modelSettings) {
   renderAgentBindings(modelSettings.agent_bindings || []);
 }
 
+function settingsFromAccountPreferences(accountPreferences, fallback = readSettingsDraft()) {
+  if (!accountPreferences) {
+    return fallback;
+  }
+  return {
+    ...fallback,
+    displayName: accountPreferences.display_name || fallback.displayName,
+    role: accountPreferences.role_title || accountPreferences.role || fallback.role,
+    avatarDataUrl: accountPreferences.avatar_url || "",
+    language: accountPreferences.language || fallback.language,
+    defaultView: accountPreferences.default_view || fallback.defaultView,
+  };
+}
+
+function fillAccountPreferencesForm(accountPreferences) {
+  state.accountPreferences = accountPreferences;
+  const settings = settingsFromAccountPreferences(accountPreferences);
+  writeSettingsDraft(settings);
+  setControlValue(el.settingsDisplayName, settings.displayName);
+  setControlValue(el.settingsRole, settings.role);
+  setControlValue(el.settingsLanguage, settings.language);
+  setControlValue(el.settingsDefaultView, settings.defaultView);
+  renderSettingsSummary(settings);
+  applyAccountPreferencesToAuth(accountPreferences);
+}
+
+function collectAccountPreferencesPayload() {
+  const draft = readSettingsDraft();
+  return {
+    display_name: el.settingsDisplayName?.value.trim() || defaultSettings.displayName,
+    role_title: el.settingsRole?.value.trim() || defaultSettings.role,
+    avatar_url: draft.avatarDataUrl || state.accountPreferences?.avatar_url || "",
+    language: el.settingsLanguage?.value || defaultSettings.language,
+    default_view: el.settingsDefaultView?.value || defaultSettings.defaultView,
+  };
+}
+
+function applyAccountPreferencesToAuth(accountPreferences) {
+  if (!state.auth || !accountPreferences) {
+    return;
+  }
+  const nextAuth = normalizeAuthSession({
+    ...state.auth,
+    displayName: accountPreferences.display_name || state.auth.displayName,
+    role: accountPreferences.role_title || accountPreferences.role || state.auth.role,
+    avatarUrl: accountPreferences.avatar_url || "",
+    defaultView: accountPreferences.default_view || defaultSettings.defaultView,
+    remember: state.auth.remember !== false,
+  });
+  if (!nextAuth) {
+    return;
+  }
+  state.auth = nextAuth;
+  writeAuthSession(nextAuth, nextAuth.remember !== false);
+  renderAuthUser();
+}
+
 function collectSettingsDraft() {
   return {
     datasourceName: el.settingsDatasourceName?.value.trim() || defaultSettings.datasourceName,
@@ -2644,7 +2704,7 @@ function collectSettingsDraft() {
     maxTokens: el.settingsMaxTokens?.value.trim() || defaultSettings.maxTokens,
     displayName: el.settingsDisplayName?.value.trim() || defaultSettings.displayName,
     role: el.settingsRole?.value.trim() || defaultSettings.role,
-    avatarDataUrl: readSettingsDraft().avatarDataUrl || defaultSettings.avatarDataUrl,
+    avatarDataUrl: readSettingsDraft().avatarDataUrl || state.accountPreferences?.avatar_url || defaultSettings.avatarDataUrl,
     language: el.settingsLanguage?.value || defaultSettings.language,
     defaultView: el.settingsDefaultView?.value || defaultSettings.defaultView,
   };
@@ -2731,6 +2791,12 @@ async function hydrateSettingsForm() {
   state.settingsLoaded = true;
   if (!state.auth) {
     return;
+  }
+  try {
+    const accountPreferences = await fetchJson("/api/account/preferences");
+    fillAccountPreferencesForm(accountPreferences);
+  } catch (error) {
+    setSettingsStatus(`账号偏好加载失败：${error.message}`, "error");
   }
   try {
     const dataSource = await fetchJson("/api/data-sources/default");
@@ -2905,12 +2971,35 @@ async function testModelSettings() {
   }
 }
 
-function saveSettingsDraft(button, sectionLabel) {
-  const settings = collectSettingsDraft();
-  writeSettingsDraft(settings);
-  renderSettingsSummary(settings);
-  setSettingsStatus(`${sectionLabel}已保存`, "ok");
-  markButtonDone(button, "已保存");
+async function saveAccountPreferences() {
+  if (!el.settingsSaveProfileButton) {
+    return;
+  }
+  const button = el.settingsSaveProfileButton;
+  const buttonText = button.querySelector("span");
+  const originalText = buttonText?.textContent || "保存账户偏好";
+  button.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "保存中";
+  }
+  setSettingsStatus("正在保存账户偏好", "warning");
+  try {
+    const accountPreferences = await fetchJson("/api/account/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectAccountPreferencesPayload()),
+    });
+    fillAccountPreferencesForm(accountPreferences);
+    setSettingsStatus("账户偏好已保存", "ok");
+    markButtonDone(button, "已保存");
+  } catch (error) {
+    setSettingsStatus(`保存失败：${error.message}`, "error");
+    if (buttonText) {
+      buttonText.textContent = originalText;
+    }
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function switchSettingsTab(tabName) {
@@ -2946,13 +3035,13 @@ function handleSettingsAvatarUpload(event) {
     const settings = { ...collectSettingsDraft(), avatarDataUrl: String(reader.result || "") };
     writeSettingsDraft(settings);
     renderSettingsSummary(settings);
-    setSettingsStatus("头像已更新", "ok");
+    setSettingsStatus("头像已预览，点击保存账户偏好后生效", "warning");
   };
   reader.onerror = () => setSettingsStatus("头像读取失败", "error");
   reader.readAsDataURL(file);
 }
 
-function changeSettingsPassword() {
+async function changeSettingsPassword() {
   const current = el.settingsCurrentPassword?.value || "";
   const next = el.settingsNewPassword?.value || "";
   const confirm = el.settingsConfirmPassword?.value || "";
@@ -2968,13 +3057,42 @@ function changeSettingsPassword() {
     setSettingsStatus("两次新密码不一致", "error");
     return;
   }
-  [el.settingsCurrentPassword, el.settingsNewPassword, el.settingsConfirmPassword].forEach((input) => {
-    if (input) {
-      input.value = "";
+  const button = el.settingsChangePasswordButton;
+  const buttonText = button?.querySelector("span");
+  const originalText = buttonText?.textContent || "更新密码";
+  if (button) {
+    button.disabled = true;
+  }
+  if (buttonText) {
+    buttonText.textContent = "更新中";
+  }
+  setSettingsStatus("正在更新密码", "warning");
+  try {
+    const result = await fetchJson("/api/account/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: current,
+        new_password: next,
+      }),
+    });
+    [el.settingsCurrentPassword, el.settingsNewPassword, el.settingsConfirmPassword].forEach((input) => {
+      if (input) {
+        input.value = "";
+      }
+    });
+    setSettingsStatus(result.message || "密码已更新", "ok");
+    markButtonDone(button, "已更新");
+  } catch (error) {
+    setSettingsStatus(`密码更新失败：${error.message}`, "error");
+    if (buttonText) {
+      buttonText.textContent = originalText;
     }
-  });
-  setSettingsStatus("密码草稿已更新", "ok");
-  markButtonDone(el.settingsChangePasswordButton, "已更新");
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
 }
 
 function resetSettingsDraft() {
@@ -4957,9 +5075,7 @@ function bindEvents() {
   el.settingsSaveDatasourceButton?.addEventListener("click", saveDataSourceSettings);
   el.settingsTestModelButton?.addEventListener("click", testModelSettings);
   el.settingsSaveModelButton?.addEventListener("click", saveModelSettings);
-  el.settingsSaveProfileButton?.addEventListener("click", () =>
-    saveSettingsDraft(el.settingsSaveProfileButton, "账户偏好"),
-  );
+  el.settingsSaveProfileButton?.addEventListener("click", saveAccountPreferences);
   el.settingsTabs.forEach((tab) => {
     tab.addEventListener("click", () => switchSettingsTab(tab.dataset.settingsTab));
   });

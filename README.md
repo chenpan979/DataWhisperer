@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.13.8.1：模型配置本地迁移修复版本**。
+当前项目已经更新到 **V3.13.9：账号偏好后端持久化版本**。
 
 版本入口：
 
@@ -81,6 +81,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.13.7`：AI 查数主入口接入当前工作空间默认数据源，登录态自然语言查询、Schema 同步和系统设置保持同一条数据源链路，未登录调试仍保留 `.env` 兜底。
 - `v3.13.8`：系统设置的模型配置接入真实后端 API，新增模型供应商、模型密钥、模型 Profile 和 Agent 绑定表，为后续多智能体独立模型路由预留接口。
 - `v3.13.8.1`：修复本地已有产品库升级后的模型配置加载问题，补齐 V3.13.8 表迁移并支持从 `.env` 自动回填已配置的模型 API Key。
+- `v3.13.9`：系统设置的账号偏好接入真实后端 API，支持显示名、头像、岗位角色、界面语言、默认打开页和修改密码持久化。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -161,6 +162,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.13.7 将 AI 查数的业务库连接也切到当前工作空间默认数据源：登录用户提问时会先解析租户和工作空间，再读取系统设置中的默认数据源创建 Engine；未登录接口调试仍使用 `.env` 的 `DATABASE_URL`。
 - V3.13.8 将模型配置从前端草稿升级为后端 API：`model_providers` 管供应商，`model_credentials` 管脱敏密钥，`model_profiles` 管调用参数，`agent_model_bindings` 预留 SQL、图表、分析总结、RAG 等 Agent 的模型路由能力。
 - V3.13.8.1 修复已有 `datawhisperer_product` 未执行模型配置表迁移导致 `/api/model-settings/default` 500 的问题；本地已执行 [升级脚本](scripts/upgrade_product_schema_v3_13_8.sql)，并让后端在 provider 已存在但 credential 缺失时从 `.env` 自动补齐脱敏密钥。
+- V3.13.9 将账号偏好从前端草稿升级为后端 API：用户显示名和头像写入 `users`，语言、默认打开页和岗位角色写入 `user_preferences`，修改密码走后端哈希校验。
 
 ## 技术栈
 
@@ -361,6 +363,7 @@ uvicorn app.main:app --reload --port 8081
 - 示例问题：http://127.0.0.1:8081/api/examples
 - 默认数据源：http://127.0.0.1:8081/api/data-sources/default
 - 默认模型配置：http://127.0.0.1:8081/api/model-settings/default
+- 账号偏好：http://127.0.0.1:8081/api/account/preferences
 - 数据结构：http://127.0.0.1:8081/api/schema/overview
 - 数据结构资料文件：http://127.0.0.1:8081/api/files/schema
 - RAG 知识库资料文件：http://127.0.0.1:8081/api/files/rag
@@ -424,6 +427,18 @@ uvicorn app.main:app --reload --port 8081
 ### `PATCH /api/model-settings/agent-bindings`
 
 批量更新 Agent 模型绑定，为后续多智能体按能力切模型预留接口。
+
+### `GET /api/account/preferences`
+
+读取当前登录用户的账号偏好，前端左下角用户卡片和系统设置账号页都会使用这个接口。
+
+### `PATCH /api/account/preferences`
+
+保存显示名、头像、岗位角色、界面语言和默认打开页。偏好按租户和用户唯一保存，为后续多租户体验隔离预留。
+
+### `PATCH /api/account/password`
+
+修改当前登录账号密码。后端会校验当前密码，保存新密码哈希，不在前端保留明文。
 
 ### `GET /api/schema/overview`
 

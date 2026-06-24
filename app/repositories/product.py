@@ -24,6 +24,7 @@ from app.db.product_models import (
     Tenant,
     TenantMembership,
     User,
+    UserPreference,
     Workspace,
     WorkspaceMembership,
 )
@@ -189,6 +190,69 @@ class UserRepository:
         user.last_login_at = login_at or datetime.now()
         self.session.flush()
         return user
+
+
+class AccountPreferenceRepository:
+    """账号偏好仓储。
+
+    偏好按租户保存，方便同一个用户未来加入多个租户时拥有不同工作台体验。
+    """
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def get_for_user(self, *, tenant_id: int, user_id: int) -> UserPreference | None:
+        """读取用户在指定租户下的偏好。"""
+
+        statement = select(UserPreference).where(
+            UserPreference.tenant_id == tenant_id,
+            UserPreference.user_id == user_id,
+        )
+        return self.session.scalar(statement)
+
+    def ensure_for_user(
+        self,
+        *,
+        tenant_id: int,
+        user_id: int,
+        role_title: str | None = None,
+        language: str = "zh-CN",
+        default_view: str = "analysisView",
+    ) -> UserPreference:
+        """确保用户至少有一条偏好记录。"""
+
+        preference = self.get_for_user(tenant_id=tenant_id, user_id=user_id)
+        if preference is not None:
+            return preference
+        preference = UserPreference(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            role_title=role_title,
+            language=language,
+            default_view=default_view,
+        )
+        self.session.add(preference)
+        self.session.flush()
+        return preference
+
+    def update(
+        self,
+        preference: UserPreference,
+        *,
+        role_title: str | None = None,
+        language: str | None = None,
+        default_view: str | None = None,
+    ) -> UserPreference:
+        """更新账号偏好。"""
+
+        if role_title is not None:
+            preference.role_title = role_title
+        if language is not None:
+            preference.language = language
+        if default_view is not None:
+            preference.default_view = default_view
+        self.session.flush()
+        return preference
 
 
 class WorkspaceRepository:

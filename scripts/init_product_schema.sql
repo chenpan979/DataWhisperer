@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     email VARCHAR(128) NOT NULL,
     display_name VARCHAR(64) NOT NULL,
-    avatar_url VARCHAR(512) NULL,
+    avatar_url LONGTEXT NULL,
     password_hash VARCHAR(255) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'active',
     last_login_at DATETIME NULL,
@@ -40,6 +40,25 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='用户账号。密码只保存哈希，不保存明文。';
 
+CREATE TABLE IF NOT EXISTS user_preferences (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    tenant_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    role_title VARCHAR(64) NULL,
+    language VARCHAR(16) NOT NULL DEFAULT 'zh-CN',
+    default_view VARCHAR(64) NOT NULL DEFAULT 'analysisView',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_preferences_tenant_user (tenant_id, user_id),
+    KEY idx_user_preferences_user (user_id),
+    CONSTRAINT fk_user_preferences_tenant
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+      ON DELETE CASCADE,
+    CONSTRAINT fk_user_preferences_user
+      FOREIGN KEY (user_id) REFERENCES users(id)
+      ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='用户在租户下的工作台偏好。';
 CREATE TABLE IF NOT EXISTS tenant_memberships (
     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     tenant_id BIGINT UNSIGNED NOT NULL,
@@ -480,6 +499,13 @@ ON DUPLICATE KEY UPDATE
     display_name = VALUES(display_name),
     status = VALUES(status);
 
+INSERT INTO user_preferences (tenant_id, user_id, role_title, language, default_view)
+SELECT t.id, u.id, '数据工作台管理员', 'zh-CN', 'analysisView'
+FROM tenants t
+JOIN users u ON u.email = 'admin@datawhisperer.local'
+WHERE t.tenant_key = 'demo'
+ON DUPLICATE KEY UPDATE
+    updated_at = CURRENT_TIMESTAMP;
 INSERT INTO tenant_memberships (tenant_id, user_id, role, status)
 SELECT t.id, u.id, 'owner', 'active'
 FROM tenants t

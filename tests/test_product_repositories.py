@@ -46,6 +46,7 @@ def test_product_models_cover_core_tables() -> None:
     expected_tables = {
         "tenants",
         "users",
+        "user_preferences",
         "tenant_memberships",
         "workspaces",
         "workspace_memberships",

@@ -27,6 +27,7 @@ from app.core.product_database import ProductBase
 # MySQL 使用 BIGINT UNSIGNED，SQLite 测试环境使用 INTEGER 才能稳定自增。
 ID_TYPE = BigInteger().with_variant(Integer, "sqlite")
 MESSAGE_CONTENT_TYPE = Text().with_variant(mysql.LONGTEXT, "mysql")
+AVATAR_CONTENT_TYPE = Text().with_variant(mysql.LONGTEXT, "mysql")
 
 
 class TimestampMixin:
@@ -89,7 +90,7 @@ class User(ProductBase, TimestampMixin):
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(AVATAR_CONTENT_TYPE, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -103,6 +104,41 @@ class User(ProductBase, TimestampMixin):
         cascade="all, delete-orphan",
     )
     conversations: Mapped[list[Conversation]] = relationship(back_populates="user")
+    preferences: Mapped[list[UserPreference]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserPreference(ProductBase, TimestampMixin):
+    """用户在某个租户下的工作台偏好。
+
+    这张表按 `tenant_id + user_id` 做唯一约束，是为了给后续多租户预留空间：
+    同一个账号加入不同公司时，可以拥有不同的默认页面、语言和展示角色。
+    """
+
+    __tablename__ = "user_preferences"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", name="uk_user_preferences_tenant_user"),
+        Index("idx_user_preferences_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role_title: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    language: Mapped[str] = mapped_column(String(16), nullable=False, default="zh-CN")
+    default_view: Mapped[str] = mapped_column(String(64), nullable=False, default="analysisView")
+
+    user: Mapped[User] = relationship(back_populates="preferences")
 
 
 class TenantMembership(ProductBase):
