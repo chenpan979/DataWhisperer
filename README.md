@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.13.9：账号偏好后端持久化版本**。
+当前项目已经更新到 **V3.13.10：安全策略后端持久化版本**。
 
 版本入口：
 
@@ -82,6 +82,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.13.8`：系统设置的模型配置接入真实后端 API，新增模型供应商、模型密钥、模型 Profile 和 Agent 绑定表，为后续多智能体独立模型路由预留接口。
 - `v3.13.8.1`：修复本地已有产品库升级后的模型配置加载问题，补齐 V3.13.8 表迁移并支持从 `.env` 自动回填已配置的模型 API Key。
 - `v3.13.9`：系统设置的账号偏好接入真实后端 API，支持显示名、头像、岗位角色、界面语言、默认打开页和修改密码持久化。
+- `v3.13.10`：系统设置的安全策略接入真实后端 API，新增工作空间级 SQL 安全策略表，AI 查数执行链路会读取策略控制只读校验、自动 LIMIT、最大 LIMIT 和执行轨迹。
 
 项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
 
@@ -163,6 +164,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.13.8 将模型配置从前端草稿升级为后端 API：`model_providers` 管供应商，`model_credentials` 管脱敏密钥，`model_profiles` 管调用参数，`agent_model_bindings` 预留 SQL、图表、分析总结、RAG 等 Agent 的模型路由能力。
 - V3.13.8.1 修复已有 `datawhisperer_product` 未执行模型配置表迁移导致 `/api/model-settings/default` 500 的问题；本地已执行 [升级脚本](scripts/upgrade_product_schema_v3_13_8.sql)，并让后端在 provider 已存在但 credential 缺失时从 `.env` 自动补齐脱敏密钥。
 - V3.13.9 将账号偏好从前端草稿升级为后端 API：用户显示名和头像写入 `users`，语言、默认打开页和岗位角色写入 `user_preferences`，修改密码走后端哈希校验。
+- V3.13.10 将安全策略从前端静态开关升级为工作空间级后端配置，支持只读 SQL 基线、自动 LIMIT、最大 LIMIT、查询超时、执行轨迹和策略试算。
 
 ## 技术栈
 
@@ -427,6 +429,18 @@ uvicorn app.main:app --reload --port 8081
 ### `PATCH /api/model-settings/agent-bindings`
 
 批量更新 Agent 模型绑定，为后续多智能体按能力切模型预留接口。
+
+### `GET /api/security-policies/default`
+
+读取当前工作空间的安全策略。这里是 AI 查数执行前的真实策略来源，而不是前端静态开关。
+
+### `PATCH /api/security-policies/default`
+
+保存自动 LIMIT、默认 LIMIT、最大 LIMIT、查询超时、执行轨迹和敏感配置托管策略。只读 SQL 属于系统强制基线，不允许关闭。
+
+### `POST /api/security-policies/default/test`
+
+对一条 SQL 做策略试算，用于在系统设置页快速验证某条 SQL 会通过、被拦截，还是被自动补充 LIMIT。
 
 ### `GET /api/account/preferences`
 

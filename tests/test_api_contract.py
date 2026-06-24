@@ -29,6 +29,8 @@ def test_app_routes_exist() -> None:
     assert "/api/model-settings/default" in paths
     assert "/api/model-settings/default/test" in paths
     assert "/api/model-settings/agent-bindings" in paths
+    assert "/api/security-policies/default" in paths
+    assert "/api/security-policies/default/test" in paths
     assert "/api/schema/overview" in paths
     assert "/api/schema/graph" in paths
     assert "/api/schema/sync" in paths
@@ -53,13 +55,13 @@ def test_console_static_fragments_are_served() -> None:
     index_response = client.get("/")
     assert index_response.status_code == 200
     assert "/static/assets/bootstrap.js" in index_response.text
-    assert "v=3.13.9" in index_response.text
+    assert "v=3.13.10" in index_response.text
     assert "/static/partials/icon-sprite.html" in index_response.text
     assert "/static/partials/auth-shell.html" in index_response.text
     assert "/static/partials/app-shell.html" in index_response.text
 
     bootstrap_js = Path("static/assets/bootstrap.js").read_text(encoding="utf-8")
-    assert 'const appVersion = "3.13.9"' in bootstrap_js
+    assert 'const appVersion = "3.13.10"' in bootstrap_js
 
     for path in [
         "/static/partials/icon-sprite.html",
@@ -82,6 +84,7 @@ def test_product_schema_migration_script_contains_core_tables() -> None:
         "user_preferences",
         "tenant_memberships",
         "workspaces",
+        "workspace_security_policies",
         "data_sources",
         "data_source_credentials",
         "model_providers",
@@ -137,3 +140,15 @@ def test_v3139_upgrade_script_adds_account_preferences() -> None:
     assert "create table if not exists user_preferences" in sql
     assert "modify column avatar_url longtext null" in sql
     assert "uk_user_preferences_tenant_user" in sql
+
+
+def test_v31310_upgrade_script_adds_security_policy_table() -> None:
+    script_path = Path("scripts/upgrade_product_schema_v3_13_10.sql")
+    sql = script_path.read_text(encoding="utf-8").lower()
+
+    assert "create table if not exists workspace_security_policies" in sql
+    assert "readonly_sql_enabled" in sql
+    assert "auto_limit_enabled" in sql
+    assert "default_limit" in sql
+    assert "max_limit" in sql
+    assert "audit_trace_enabled" in sql

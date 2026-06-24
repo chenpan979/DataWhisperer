@@ -5070,8 +5070,24 @@ td {
   width: 100%;
 }
 
+.settings-field textarea {
+  background: #f8fafc;
+  border: 1px solid #d7e2df;
+  border-radius: 8px;
+  color: #10231f;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  line-height: 1.6;
+  min-height: 96px;
+  outline: 0;
+  padding: 10px 12px;
+  resize: vertical;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease), box-shadow 160ms var(--ease);
+  width: 100%;
+}
+
 .settings-field input:focus,
-.settings-field select:focus {
+.settings-field select:focus,
+.settings-field textarea:focus {
   background: #ffffff;
   border-color: #14b8a6;
   box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.08);
@@ -5293,6 +5309,49 @@ td {
   margin-top: 3px;
 }
 
+
+.settings-security-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-policy-section {
+  background: linear-gradient(180deg, #ffffff, #fbfefd);
+  border: 1px solid #e0ebe7;
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.settings-policy-test {
+  grid-column: 1 / -1;
+}
+
+.settings-policy-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-toggle.locked {
+  background: #f8fafc;
+}
+
+.settings-toggle.locked strong::after {
+  background: #ecfdf8;
+  border: 1px solid #c9eee4;
+  border-radius: 999px;
+  color: #006b62;
+  content: "\9501\5b9a";
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+  padding: 2px 7px;
+  vertical-align: middle;
+}
+
 .settings-policy-grid {
   display: grid;
   gap: 12px;
@@ -5364,7 +5423,9 @@ td {
   .settings-grid,
   .settings-account-layout,
   .settings-summary-grid,
-  .settings-policy-grid {
+  .settings-security-layout,
+  .settings-policy-grid,
+  .settings-policy-grid.compact {
     grid-template-columns: 1fr;
   }
 }

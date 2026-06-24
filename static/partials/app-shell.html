@@ -1061,43 +1061,112 @@
                   </div>
                 </section>
 
-                <section class="settings-card settings-card-wide settings-tab-panel" data-settings-panel="security">
-                  <div class="settings-card-head">
-                    <div class="settings-icon">
-                      <svg><use href="#icon-shield"></use></svg>
-                    </div>
-                    <div>
-                      <h3>安全策略</h3>
-                      <p>把系统的关键安全边界显式展示出来，便于面试和团队协作时说明设计原则。</p>
-                    </div>
-                  </div>
-                  <div class="settings-policy-grid">
-                    <label class="settings-toggle">
-                      <input type="checkbox" checked disabled />
-                      <span></span>
-                      <strong>只允许 SELECT / WITH 查询</strong>
-                      <small>禁止写入、删除、DDL、授权和存储过程。</small>
-                    </label>
-                    <label class="settings-toggle">
-                      <input type="checkbox" checked disabled />
-                      <span></span>
-                      <strong>自动补充 LIMIT</strong>
-                      <small>避免一次返回过多数据影响演示和数据库稳定性。</small>
-                    </label>
-                    <label class="settings-toggle">
-                      <input type="checkbox" checked disabled />
-                      <span></span>
-                      <strong>保留执行轨迹</strong>
-                      <small>记录 schema、指标检索、SQL 生成、查询执行和结论生成链路。</small>
-                    </label>
-                    <label class="settings-toggle">
-                      <input type="checkbox" checked disabled />
-                      <span></span>
-                      <strong>敏感配置后端托管</strong>
-                      <small>浏览器只保存展示草稿，真实密钥后续应加密存储在服务端。</small>
-                    </label>
-                  </div>
-                </section>
+<section class="settings-card settings-card-wide settings-tab-panel" data-settings-panel="security">
+  <div class="settings-card-head">
+    <div class="settings-icon">
+      <svg><use href="#icon-shield"></use></svg>
+    </div>
+    <div>
+      <h3>安全策略</h3>
+      <p>集中管理 SQL 只读校验、自动 LIMIT 和执行轨迹，AI 查数会在执行前读取这里的策略。</p>
+    </div>
+    <span class="state-label warning" id="settingsSecurityState">未加载</span>
+  </div>
+
+  <div class="settings-security-layout">
+    <div class="settings-policy-section">
+      <div class="settings-subsection-title">
+        <strong>强制基线</strong>
+        <span>这些能力属于系统安全底线，暂时不允许关闭。</span>
+      </div>
+      <div class="settings-policy-grid compact">
+        <label class="settings-toggle locked">
+          <input id="settingsReadonlySql" type="checkbox" checked disabled />
+          <span></span>
+          <strong>仅允许 SELECT / WITH</strong>
+          <small>禁止写入、删除、DDL 和危险函数。</small>
+        </label>
+        <label class="settings-toggle locked">
+          <input type="checkbox" checked disabled />
+          <span></span>
+          <strong>服务端二次校验</strong>
+          <small>不信任模型输出，执行前重新校验。</small>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-policy-section">
+      <div class="settings-subsection-title">
+        <strong>查询保护</strong>
+        <span>通过 LIMIT 和超时控制，避免一次查询影响演示库稳定性。</span>
+      </div>
+      <div class="settings-form-grid">
+        <label class="settings-toggle settings-field-wide">
+          <input id="settingsAutoLimit" type="checkbox" checked />
+          <span></span>
+          <strong>自动补充 LIMIT</strong>
+          <small>模型未生成 LIMIT 时按默认值自动补齐。</small>
+        </label>
+        <label class="settings-field">
+          <span>默认 LIMIT</span>
+          <input id="settingsDefaultLimit" type="number" min="1" max="5000" step="1" value="100" />
+        </label>
+        <label class="settings-field">
+          <span>最大 LIMIT</span>
+          <input id="settingsMaxLimit" type="number" min="1" max="10000" step="1" value="1000" />
+        </label>
+        <label class="settings-field">
+          <span>查询超时秒数</span>
+          <input id="settingsQueryTimeout" type="number" min="1" max="300" step="1" value="20" />
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-policy-section">
+      <div class="settings-subsection-title">
+        <strong>审计与托管</strong>
+        <span>决定执行链路和敏感配置的展示方式。</span>
+      </div>
+      <div class="settings-policy-grid compact">
+        <label class="settings-toggle">
+          <input id="settingsAuditTrace" type="checkbox" checked />
+          <span></span>
+          <strong>保留执行轨迹</strong>
+          <small>记录 schema、指标检索、SQL 生成、查询执行和总结链路。</small>
+        </label>
+        <label class="settings-toggle">
+          <input id="settingsSensitiveConfig" type="checkbox" checked />
+          <span></span>
+          <strong>敏感配置后端托管</strong>
+          <small>浏览器只保存展示草稿，真实密钥后续加密存储在服务端。</small>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-policy-section settings-policy-test">
+      <div class="settings-subsection-title">
+        <strong>策略试算</strong>
+        <span>输入一条 SQL，先看会通过还是会被拦截。</span>
+      </div>
+      <label class="settings-field">
+        <span>测试 SQL</span>
+        <textarea id="settingsSecuritySql" rows="4">SELECT * FROM orders</textarea>
+      </label>
+    </div>
+  </div>
+
+  <div class="settings-card-actions">
+    <p id="settingsSecurityHint">未加载安全策略。</p>
+    <button class="secondary-button compact-button" id="settingsTestSecurityButton" type="button">
+      <svg><use href="#icon-sparkles"></use></svg>
+      <span>检测策略</span>
+    </button>
+    <button class="primary-button compact-button" id="settingsSaveSecurityButton" type="button">
+      <svg><use href="#icon-check"></use></svg>
+      <span>保存策略</span>
+    </button>
+  </div>
+</section>
               </div>
             </div>
           </section>

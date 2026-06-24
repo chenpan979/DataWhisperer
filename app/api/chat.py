@@ -5,7 +5,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.api.auth import AuthContext, require_auth_context
+from app.api.security_policies import build_query_security_policy, ensure_default_security_policy
 from app.agent.orchestrator import DataAnalysisOrchestrator
+from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.llm import get_llm_client
 from app.core.product_database import get_product_session
@@ -18,6 +20,7 @@ from app.models.conversations import (
 )
 from app.models.query import QueryRequest, QueryResponse
 from app.tools.data_source_engine import get_default_data_source_engine
+from app.tools.security_policy import QuerySecurityPolicy, default_query_security_policy
 from app.tools.database_conversation_store import DatabaseConversationStore
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -36,8 +39,14 @@ async def query_data(
     """
 
     try:
-        engine = _build_query_engine(authorization=authorization, session=session)
-        orchestrator = DataAnalysisOrchestrator(engine=engine, llm=get_llm_client())
+        auth_context = _resolve_auth_context(authorization=authorization, session=session)
+        engine = _build_query_engine(auth_context=auth_context, session=session)
+        security_policy = _build_query_security_policy(auth_context=auth_context, session=session)
+        orchestrator = DataAnalysisOrchestrator(
+            engine=engine,
+            llm=get_llm_client(),
+            security_policy=security_policy,
+        )
         return await orchestrator.run(request)
     except HTTPException:
         raise
@@ -47,21 +56,46 @@ async def query_data(
         raise HTTPException(status_code=500, detail=f"Query failed: {exc}") from exc
 
 
-def _build_query_engine(*, authorization: str | None, session: Session) -> Engine:
-    """为 AI 查数选择业务数据库连接。
-
-    登录态下，AI 查数必须和系统设置里的默认数据源保持一致；未登录访问时，
-    继续使用 `.env` 中的 `DATABASE_URL`，方便本地调试和接口文档演示。
-    """
+def _resolve_auth_context(*, authorization: str | None, session: Session) -> AuthContext | None:
+    """Resolve optional auth context for endpoints that still support local demo access."""
 
     if not authorization:
+        return None
+    return require_auth_context(authorization=authorization, session=session)
+
+
+def _build_query_engine(*, auth_context: AuthContext | None, session: Session) -> Engine:
+    """根据登录态选择 AI 查数使用的数据源。
+
+    登录用户会优先使用系统设置里的默认数据源；
+    未登录或本地演示场景继续使用 `.env` 中的 `DATABASE_URL`。
+    """
+
+    if auth_context is None:
         return get_engine()
-    auth_context = require_auth_context(authorization=authorization, session=session)
     return get_default_data_source_engine(
         session=session,
         auth_context=auth_context,
         fallback_engine_factory=get_engine,
     )
+
+
+def _build_query_security_policy(
+    *,
+    auth_context: AuthContext | None,
+    session: Session,
+) -> QuerySecurityPolicy:
+    """Read the current workspace security policy for query execution."""
+
+    if auth_context is None:
+        settings = get_settings()
+        return default_query_security_policy(
+            system_max_rows=settings.max_query_rows,
+            query_timeout_seconds=settings.query_timeout_seconds,
+        )
+    policy = ensure_default_security_policy(session=session, auth_context=auth_context)
+    session.commit()
+    return build_query_security_policy(policy)
 
 
 def _conversation_store(

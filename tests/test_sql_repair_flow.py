@@ -16,7 +16,13 @@ class RepairLLM:
 async def test_orchestrator_repairs_failed_sql_once(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    def fake_execute_safe_query(engine: object, sql: str, max_rows: int) -> tuple[str, list[str], list[dict]]:
+    def fake_execute_safe_query(
+        engine: object,
+        sql: str,
+        max_rows: int,
+        *,
+        auto_limit_enabled: bool = True,
+    ) -> tuple[str, list[str], list[dict]]:
         calls.append(sql)
         if len(calls) == 1:
             raise ValueError("Unknown column 'missing_column'")

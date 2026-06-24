@@ -40,7 +40,7 @@ def chat_client(
     class DummyOrchestrator:
         """只记录传入的业务库 Engine，不真的调用 LLM 或执行 SQL。"""
 
-        def __init__(self, engine: object, llm: object):
+        def __init__(self, engine: object, llm: object, security_policy: object | None = None):
             captured_engines.append(engine)
 
         async def run(self, request) -> QueryResponse:

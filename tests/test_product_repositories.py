@@ -50,6 +50,7 @@ def test_product_models_cover_core_tables() -> None:
         "tenant_memberships",
         "workspaces",
         "workspace_memberships",
+        "workspace_security_policies",
         "data_sources",
         "data_source_credentials",
         "model_providers",

@@ -7,6 +7,7 @@ from app.rag.metric_retriever import get_metric_retriever
 from app.tools.chart_tool import recommend_chart
 from app.tools.insight_tool import generate_insight
 from app.tools.query_tool import execute_safe_query
+from app.tools.security_policy import QuerySecurityPolicy, default_query_security_policy
 from app.tools.schema_tool import build_schema_overview, schema_to_prompt
 from app.tools.sql_tool import GeneratedSQL, generate_sql, repair_sql
 
@@ -25,10 +26,19 @@ class DataAnalysisOrchestrator:
     可以从这里把 SQL Agent、Chart Agent、Insight Agent 逐步拆出去。
     """
 
-    def __init__(self, engine: Engine, llm: LLMClient):
+    def __init__(
+        self,
+        engine: Engine,
+        llm: LLMClient,
+        security_policy: QuerySecurityPolicy | None = None,
+    ):
         self.engine = engine
         self.llm = llm
         self.settings = get_settings()
+        self.security_policy = security_policy or default_query_security_policy(
+            system_max_rows=self.settings.max_query_rows,
+            query_timeout_seconds=self.settings.query_timeout_seconds,
+        )
 
     async def _execute_with_optional_repair(
         self,
@@ -41,6 +51,7 @@ class DataAnalysisOrchestrator:
         trace: list[TraceStep],
         warnings: list[str],
         prompt_versions: dict[str, str],
+        auto_limit_enabled: bool = True,
     ) -> tuple[str, list[str], list[dict], GeneratedSQL, int]:
         """执行 SQL；失败时尝试一次模型自修复。
 
@@ -50,7 +61,12 @@ class DataAnalysisOrchestrator:
         """
 
         try:
-            safe_sql, columns, rows = execute_safe_query(self.engine, generated.sql, max_rows)
+            safe_sql, columns, rows = execute_safe_query(
+                self.engine,
+                generated.sql,
+                max_rows,
+                auto_limit_enabled=auto_limit_enabled,
+            )
             return safe_sql, columns, rows, generated, 0
         except Exception as exc:
             if generated.used_fallback:
@@ -76,7 +92,12 @@ class DataAnalysisOrchestrator:
                 raise
             if repaired.prompt_id and repaired.prompt_version:
                 prompt_versions[repaired.prompt_id] = repaired.prompt_version
-            safe_sql, columns, rows = execute_safe_query(self.engine, repaired.sql, max_rows)
+            safe_sql, columns, rows = execute_safe_query(
+                self.engine,
+                repaired.sql,
+                max_rows,
+                auto_limit_enabled=auto_limit_enabled,
+            )
             trace.append(
                 TraceStep(
                     name="sql_repair",
@@ -140,7 +161,23 @@ class DataAnalysisOrchestrator:
 
         # 第三步：执行 SQL 前再次做安全校验和行数限制。
         # 不能只依赖提示词约束模型，真正的安全边界必须在服务端代码里。
-        max_rows = min(request.max_rows, self.settings.max_query_rows)
+        max_rows = self.security_policy.effective_limit(
+            requested_max_rows=request.max_rows,
+            system_max_rows=self.settings.max_query_rows,
+        )
+        if self.security_policy.audit_trace_enabled:
+            trace.append(
+                TraceStep(
+                    name="security_policy",
+                    status="ok",
+                    detail=(
+                        f"readonly=on, auto_limit={'on' if self.security_policy.auto_limit_enabled else 'off'}, "
+                        f"limit={max_rows}, timeout={self.security_policy.query_timeout_seconds}s"
+                    ),
+                )
+            )
+        if not self.security_policy.auto_limit_enabled:
+            warnings.append("工作空间已关闭自动补充 LIMIT，请确保生成的 SQL 自带安全 LIMIT。")
         safe_sql, columns, rows, final_sql_result, repair_count = (
             await self._execute_with_optional_repair(
                 question=request.question,
@@ -151,6 +188,7 @@ class DataAnalysisOrchestrator:
                 trace=trace,
                 warnings=warnings,
                 prompt_versions=prompt_versions,
+                auto_limit_enabled=self.security_policy.auto_limit_enabled,
             )
         )
         trace.append(TraceStep(name="execute_sql", status="ok", detail=f"{len(rows)} rows"))
@@ -173,6 +211,15 @@ class DataAnalysisOrchestrator:
         elif insight_result.used_fallback:
             insight_trace_detail = "使用本地兜底总结"
         trace.append(TraceStep(name="insight", status="ok", detail=insight_trace_detail))
+
+        if not self.security_policy.audit_trace_enabled:
+            trace = [
+                TraceStep(
+                    name="security_policy",
+                    status="ok",
+                    detail="工作空间安全策略已隐藏详细执行轨迹。",
+                )
+            ]
 
         return QueryResponse(
             question=request.question,

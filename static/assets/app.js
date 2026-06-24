@@ -29,6 +29,7 @@ const state = {
   dataSource: null,
   modelSettings: null,
   accountPreferences: null,
+  securityPolicy: null,
   files: {
     schema: [],
     rag: [],
@@ -60,6 +61,13 @@ const defaultSettings = {
   avatarDataUrl: "",
   language: "zh-CN",
   defaultView: "analysisView",
+  readonlySqlEnabled: true,
+  autoLimitEnabled: true,
+  defaultLimit: "100",
+  maxLimit: "1000",
+  queryTimeoutSeconds: "20",
+  auditTraceEnabled: true,
+  sensitiveConfigManaged: true,
 };
 
 const pendingProcessSteps = [
@@ -307,6 +315,18 @@ const el = {
   settingsNewPassword: document.querySelector("#settingsNewPassword"),
   settingsConfirmPassword: document.querySelector("#settingsConfirmPassword"),
   settingsChangePasswordButton: document.querySelector("#settingsChangePasswordButton"),
+  settingsSecurityState: document.querySelector("#settingsSecurityState"),
+  settingsReadonlySql: document.querySelector("#settingsReadonlySql"),
+  settingsAutoLimit: document.querySelector("#settingsAutoLimit"),
+  settingsDefaultLimit: document.querySelector("#settingsDefaultLimit"),
+  settingsMaxLimit: document.querySelector("#settingsMaxLimit"),
+  settingsQueryTimeout: document.querySelector("#settingsQueryTimeout"),
+  settingsAuditTrace: document.querySelector("#settingsAuditTrace"),
+  settingsSensitiveConfig: document.querySelector("#settingsSensitiveConfig"),
+  settingsSecurityHint: document.querySelector("#settingsSecurityHint"),
+  settingsSecuritySql: document.querySelector("#settingsSecuritySql"),
+  settingsTestSecurityButton: document.querySelector("#settingsTestSecurityButton"),
+  settingsSaveSecurityButton: document.querySelector("#settingsSaveSecurityButton"),
   settingsSaveModelButton: document.querySelector("#settingsSaveModelButton"),
   settingsSaveProfileButton: document.querySelector("#settingsSaveProfileButton"),
   settingsResetButton: document.querySelector("#settingsResetButton"),
@@ -2685,6 +2705,59 @@ function applyAccountPreferencesToAuth(accountPreferences) {
   renderAuthUser();
 }
 
+function fillSecurityPolicyForm(policy) {
+  state.securityPolicy = policy;
+  if (el.settingsReadonlySql) {
+    el.settingsReadonlySql.checked = policy?.readonly_sql_enabled !== false;
+  }
+  if (el.settingsAutoLimit) {
+    el.settingsAutoLimit.checked = policy?.auto_limit_enabled !== false;
+  }
+  setControlValue(el.settingsDefaultLimit, String(policy?.default_limit ?? defaultSettings.defaultLimit));
+  setControlValue(el.settingsMaxLimit, String(policy?.max_limit ?? defaultSettings.maxLimit));
+  setControlValue(
+    el.settingsQueryTimeout,
+    String(policy?.query_timeout_seconds ?? defaultSettings.queryTimeoutSeconds),
+  );
+  if (el.settingsAuditTrace) {
+    el.settingsAuditTrace.checked = policy?.audit_trace_enabled !== false;
+  }
+  if (el.settingsSensitiveConfig) {
+    el.settingsSensitiveConfig.checked = policy?.sensitive_config_managed !== false;
+  }
+  renderSecurityPolicyState(policy);
+}
+
+function renderSecurityPolicyState(policy) {
+  if (el.settingsSecurityState) {
+    el.settingsSecurityState.textContent = policy ? "已连接" : "未加载";
+    el.settingsSecurityState.className = `state-label ${policy ? "ok" : "warning"}`;
+  }
+  if (el.settingsSecurityHint) {
+    if (!policy) {
+      el.settingsSecurityHint.textContent = "未加载安全策略。";
+      return;
+    }
+    const limitText = policy.auto_limit_enabled
+      ? `自动 LIMIT ${policy.default_limit}, 最大 ${policy.max_limit}`
+      : "未自动补 LIMIT，请确保 SQL 自带安全 LIMIT";
+    const traceText = policy.audit_trace_enabled ? "保留执行轨迹" : "隐藏详细轨迹";
+    el.settingsSecurityHint.textContent = `${limitText}, 查询超时 ${policy.query_timeout_seconds}s, ${traceText}.`;
+  }
+}
+
+function collectSecurityPolicyPayload() {
+  return {
+    readonly_sql_enabled: true,
+    auto_limit_enabled: el.settingsAutoLimit?.checked !== false,
+    default_limit: Number(el.settingsDefaultLimit?.value || defaultSettings.defaultLimit),
+    max_limit: Number(el.settingsMaxLimit?.value || defaultSettings.maxLimit),
+    query_timeout_seconds: Number(el.settingsQueryTimeout?.value || defaultSettings.queryTimeoutSeconds),
+    audit_trace_enabled: el.settingsAuditTrace?.checked !== false,
+    sensitive_config_managed: el.settingsSensitiveConfig?.checked !== false,
+  };
+}
+
 function collectSettingsDraft() {
   return {
     datasourceName: el.settingsDatasourceName?.value.trim() || defaultSettings.datasourceName,
@@ -2994,6 +3067,82 @@ async function saveAccountPreferences() {
     markButtonDone(button, "已保存");
   } catch (error) {
     setSettingsStatus(`保存失败：${error.message}`, "error");
+    if (buttonText) {
+      buttonText.textContent = originalText;
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function saveSecurityPolicy() {
+  if (!el.settingsSaveSecurityButton) {
+    return;
+  }
+  const button = el.settingsSaveSecurityButton;
+  const buttonText = button.querySelector("span");
+  const originalText = buttonText?.textContent || "保存策略";
+  button.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "保存中";
+  }
+  setSettingsStatus("正在保存安全策略", "warning");
+  try {
+    const policy = await fetchJson("/api/security-policies/default", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectSecurityPolicyPayload()),
+    });
+    fillSecurityPolicyForm(policy);
+    setSettingsStatus("安全策略已保存", "ok");
+    markButtonDone(button, "已保存");
+  } catch (error) {
+    setSettingsStatus(`保存失败：${error.message}`, "error");
+    if (buttonText) {
+      buttonText.textContent = originalText;
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function testSecurityPolicy() {
+  if (!el.settingsTestSecurityButton) {
+    return;
+  }
+  const button = el.settingsTestSecurityButton;
+  const buttonText = button.querySelector("span");
+  const originalText = buttonText?.textContent || "检测策略";
+  button.disabled = true;
+  if (buttonText) {
+    buttonText.textContent = "检测中";
+  }
+  setSettingsStatus("正在试算安全策略", "warning");
+  try {
+    const result = await fetchJson("/api/security-policies/default/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql: el.settingsSecuritySql?.value || "SELECT * FROM orders" }),
+    });
+    if (el.settingsSecurityHint) {
+      const sqlText = result.normalized_sql ? ` 规范 SQL：${result.normalized_sql.replace(/\s+/g, " ")}` : "";
+      el.settingsSecurityHint.textContent = `${result.message}${sqlText}`;
+    }
+    if (el.settingsSecurityState) {
+      el.settingsSecurityState.textContent = result.ok ? "已通过" : "已拦截";
+      el.settingsSecurityState.className = `state-label ${result.ok ? "ok" : "error"}`;
+    }
+    setSettingsStatus(result.ok ? "策略检测通过" : "策略检测未通过", result.ok ? "ok" : "error");
+    if (buttonText) {
+      buttonText.textContent = result.ok ? "已通过" : "已拦截";
+      setTimeout(() => {
+        if (buttonText.textContent === "已通过" || buttonText.textContent === "已拦截") {
+          buttonText.textContent = originalText;
+        }
+      }, 1200);
+    }
+  } catch (error) {
+    setSettingsStatus(`检测失败：${error.message}`, "error");
     if (buttonText) {
       buttonText.textContent = originalText;
     }
@@ -5076,13 +5225,15 @@ function bindEvents() {
   el.settingsTestModelButton?.addEventListener("click", testModelSettings);
   el.settingsSaveModelButton?.addEventListener("click", saveModelSettings);
   el.settingsSaveProfileButton?.addEventListener("click", saveAccountPreferences);
+  el.settingsSaveSecurityButton?.addEventListener("click", saveSecurityPolicy);
+  el.settingsTestSecurityButton?.addEventListener("click", testSecurityPolicy);
   el.settingsTabs.forEach((tab) => {
     tab.addEventListener("click", () => switchSettingsTab(tab.dataset.settingsTab));
   });
   el.settingsAvatarInput?.addEventListener("change", handleSettingsAvatarUpload);
   el.settingsChangePasswordButton?.addEventListener("click", changeSettingsPassword);
   el.settingsResetButton?.addEventListener("click", resetSettingsDraft);
-  document.querySelectorAll("#settingsView input, #settingsView select").forEach((control) => {
+  document.querySelectorAll("#settingsView input, #settingsView select, #settingsView textarea").forEach((control) => {
     control.addEventListener("input", () => setSettingsStatus("有未保存修改", "warning"));
     control.addEventListener("change", () => setSettingsStatus("有未保存修改", "warning"));
   });

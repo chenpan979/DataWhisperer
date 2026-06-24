@@ -30,6 +30,14 @@ def test_keeps_existing_limit() -> None:
     assert ensure_limit("SELECT * FROM orders LIMIT 10", 50).endswith("LIMIT 10")
 
 
+def test_caps_existing_limit_to_policy_limit() -> None:
+    assert ensure_limit("SELECT * FROM orders LIMIT 500", 50).endswith("LIMIT 50")
+
+
+def test_can_skip_auto_limit_when_policy_disables_it() -> None:
+    assert ensure_limit("SELECT * FROM orders", 50, auto_limit_enabled=False) == "SELECT * FROM orders"
+
+
 def test_region_order_count_fallback() -> None:
     generated = fallback_sql("\u67e5\u8be2\u5404\u5730\u533a\u8ba2\u5355\u6570\u91cf")
 

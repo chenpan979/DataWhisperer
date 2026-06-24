@@ -41,6 +41,7 @@ erDiagram
     users ||--o{ workspace_memberships : joins
 
     workspaces ||--o{ data_sources : manages
+    workspaces ||--|| workspace_security_policies : governs
     data_sources ||--|| data_source_credentials : stores
     data_sources ||--o{ schema_tables : syncs
     schema_tables ||--o{ schema_columns : has
@@ -162,6 +163,32 @@ erDiagram
 | created_at | datetime | 创建时间 |
 
 第一阶段可以先不实现这个表，先用 `tenant_memberships` 的角色控制。等产品变复杂后再加。
+
+### 4.6 workspace_security_policies
+
+工作空间级安全策略，用于管理 AI 查数执行前的 SQL 安全边界和展示策略。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | bigint | 主键 |
+| tenant_id | bigint | 所属租户 |
+| workspace_id | bigint | 所属工作空间，唯一 |
+| readonly_sql_enabled | tinyint | 只读 SQL 强制基线，首版不允许关闭 |
+| auto_limit_enabled | tinyint | 是否自动补充 LIMIT |
+| default_limit | int | 默认返回行数 |
+| max_limit | int | 工作空间允许的最大返回行数 |
+| query_timeout_seconds | int | 查询超时秒数 |
+| audit_trace_enabled | tinyint | 是否在响应中保留执行轨迹 |
+| sensitive_config_managed | tinyint | 是否将敏感配置交给后端托管 |
+| created_at | datetime | 创建时间 |
+| updated_at | datetime | 更新时间 |
+
+设计原因：
+
+- 提示词不是安全边界，必须有服务端可持久化策略托底。
+- 安全策略按工作空间隔离，后续可以让不同租户配置不同的查询风险阈值。
+- 当前版本先强制只读 SQL，后续可扩展到行级权限、敏感字段脱敏和审批流。
+
 
 ## 5. 数据源与 Schema 模型
 
@@ -534,7 +561,7 @@ erDiagram
 | RAG 知识库 | managed_files、knowledge_bases、knowledge_documents、knowledge_chunks | 上传后自动解析、切片、同步 Milvus |
 | 测试集管理 | managed_files、evaluation_datasets、evaluation_cases | 上传文件后解析成真实评测用例 |
 | 评测中心 | evaluation_runs、evaluation_results | 展示历史评测任务和版本趋势 |
-| 系统设置 | data_sources、data_source_credentials、users、tenant_memberships | 数据源、模型、账号和安全策略接真实后端 |
+| 系统设置 | data_sources、data_source_credentials、model_providers、model_profiles、agent_model_bindings、users、user_preferences、workspace_security_policies | 数据源、模型、账号和安全策略都接入真实后端 |
 
 这个表很关键。它说明前端不是随便摆页面，而是每个页面背后都有对应的数据模型。
 
@@ -596,6 +623,29 @@ POST   /api/evaluation-datasets
 GET    /api/evaluation-runs
 POST   /api/evaluation-runs
 GET    /api/evaluation-runs/{run_id}
+```
+
+### 11.5 系统设置与安全策略
+
+```text
+GET    /api/data-sources/default
+PATCH  /api/data-sources/default
+POST   /api/data-sources/default/test
+POST   /api/data-sources/default/sync
+
+GET    /api/model-settings/default
+PATCH  /api/model-settings/default
+POST   /api/model-settings/default/test
+GET    /api/model-settings/agent-bindings
+PATCH  /api/model-settings/agent-bindings
+
+GET    /api/account/preferences
+PATCH  /api/account/preferences
+PATCH  /api/account/password
+
+GET    /api/security-policies/default
+PATCH  /api/security-policies/default
+POST   /api/security-policies/default/test
 ```
 
 ## 12. 数据隔离规则

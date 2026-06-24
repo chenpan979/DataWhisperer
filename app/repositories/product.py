@@ -27,6 +27,7 @@ from app.db.product_models import (
     UserPreference,
     Workspace,
     WorkspaceMembership,
+    WorkspaceSecurityPolicy,
 )
 
 
@@ -775,6 +776,100 @@ class ModelSettingsRepository:
             binding.params_json = params_json or {}
         self.session.flush()
         return binding
+
+
+class SecurityPolicyRepository:
+    """Repository for workspace-level security policy."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def get_for_workspace(self, *, workspace_id: int) -> WorkspaceSecurityPolicy | None:
+        """Read one workspace security policy."""
+
+        statement = select(WorkspaceSecurityPolicy).where(
+            WorkspaceSecurityPolicy.workspace_id == workspace_id
+        )
+        return self.session.scalar(statement)
+
+    def create_default(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        default_limit: int = 100,
+        max_limit: int = 1000,
+        query_timeout_seconds: int = 20,
+    ) -> WorkspaceSecurityPolicy:
+        """Create the default policy for a workspace."""
+
+        policy = WorkspaceSecurityPolicy(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            readonly_sql_enabled=True,
+            auto_limit_enabled=True,
+            default_limit=default_limit,
+            max_limit=max_limit,
+            query_timeout_seconds=query_timeout_seconds,
+            audit_trace_enabled=True,
+            sensitive_config_managed=True,
+        )
+        self.session.add(policy)
+        self.session.flush()
+        return policy
+
+    def ensure_for_workspace(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        default_limit: int = 100,
+        max_limit: int = 1000,
+        query_timeout_seconds: int = 20,
+    ) -> WorkspaceSecurityPolicy:
+        """Ensure the workspace has a persisted security policy."""
+
+        policy = self.get_for_workspace(workspace_id=workspace_id)
+        if policy is not None:
+            return policy
+        return self.create_default(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            default_limit=default_limit,
+            max_limit=max_limit,
+            query_timeout_seconds=query_timeout_seconds,
+        )
+
+    def update(
+        self,
+        policy: WorkspaceSecurityPolicy,
+        *,
+        readonly_sql_enabled: bool | None = None,
+        auto_limit_enabled: bool | None = None,
+        default_limit: int | None = None,
+        max_limit: int | None = None,
+        query_timeout_seconds: int | None = None,
+        audit_trace_enabled: bool | None = None,
+        sensitive_config_managed: bool | None = None,
+    ) -> WorkspaceSecurityPolicy:
+        """Update security policy settings."""
+
+        if readonly_sql_enabled is not None:
+            policy.readonly_sql_enabled = readonly_sql_enabled
+        if auto_limit_enabled is not None:
+            policy.auto_limit_enabled = auto_limit_enabled
+        if default_limit is not None:
+            policy.default_limit = default_limit
+        if max_limit is not None:
+            policy.max_limit = max_limit
+        if query_timeout_seconds is not None:
+            policy.query_timeout_seconds = query_timeout_seconds
+        if audit_trace_enabled is not None:
+            policy.audit_trace_enabled = audit_trace_enabled
+        if sensitive_config_managed is not None:
+            policy.sensitive_config_managed = sensitive_config_managed
+        self.session.flush()
+        return policy
 
 
 class SchemaRepository:

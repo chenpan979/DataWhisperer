@@ -218,7 +218,43 @@ class Workspace(ProductBase, TimestampMixin):
         back_populates="workspace",
         cascade="all, delete-orphan",
     )
+    security_policy: Mapped[WorkspaceSecurityPolicy | None] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
     conversations: Mapped[list[Conversation]] = relationship(back_populates="workspace")
+
+
+class WorkspaceSecurityPolicy(ProductBase, TimestampMixin):
+    """Workspace-level SQL safety and audit policy."""
+
+    __tablename__ = "workspace_security_policies"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="uk_workspace_security_policies_workspace"),
+        Index("idx_workspace_security_policies_tenant", "tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    readonly_sql_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    auto_limit_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    default_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    max_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
+    query_timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    audit_trace_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sensitive_config_managed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    workspace: Mapped[Workspace] = relationship(back_populates="security_policy")
 
 
 class WorkspaceMembership(ProductBase):

@@ -79,11 +79,17 @@ def validate_select_sql(sql: str) -> str:
     return cleaned
 
 
-def ensure_limit(sql: str, max_rows: int) -> str:
-    """确保查询结果有行数上限。"""
+def ensure_limit(sql: str, max_rows: int, *, auto_limit_enabled: bool = True) -> str:
+    """Ensure the query respects the configured row limit."""
 
     cleaned = validate_select_sql(sql)
-    if re.search(r"\blimit\s+\d+\s*$", cleaned, flags=re.IGNORECASE):
+    limit_match = re.search(r"\blimit\s+(\d+)\s*$", cleaned, flags=re.IGNORECASE)
+    if limit_match:
+        requested_limit = int(limit_match.group(1))
+        if requested_limit <= max_rows:
+            return cleaned
+        return f"{cleaned[:limit_match.start()].rstrip()}\nLIMIT {max_rows}"
+    if not auto_limit_enabled:
         return cleaned
     return f"{cleaned}\nLIMIT {max_rows}"
 
