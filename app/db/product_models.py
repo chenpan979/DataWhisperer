@@ -223,6 +223,10 @@ class Workspace(ProductBase, TimestampMixin):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    knowledge_bases: Mapped[list[KnowledgeBase]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
     conversations: Mapped[list[Conversation]] = relationship(back_populates="workspace")
 
 
@@ -671,6 +675,141 @@ class SchemaRelationship(ProductBase):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class KnowledgeBase(ProductBase, TimestampMixin):
+    """租户/工作空间级知识库。"""
+
+    __tablename__ = "knowledge_bases"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uk_knowledge_bases_workspace_name"),
+        Index("idx_knowledge_bases_tenant_workspace", "tenant_id", "workspace_id"),
+        Index("idx_knowledge_bases_workspace_default", "workspace_id", "is_default"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    workspace: Mapped[Workspace] = relationship(back_populates="knowledge_bases")
+    documents: Mapped[list[KnowledgeDocument]] = relationship(
+        back_populates="knowledge_base",
+        cascade="all, delete-orphan",
+    )
+
+
+class KnowledgeDocument(ProductBase, TimestampMixin):
+    """知识库中的一个上传文档。"""
+
+    __tablename__ = "knowledge_documents"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "file_id", name="uk_knowledge_documents_workspace_file"),
+        Index("idx_knowledge_documents_base", "knowledge_base_id", "created_at"),
+        Index("idx_knowledge_documents_sync", "workspace_id", "sync_status"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    knowledge_base_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    file_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    extension: Mapped[str] = mapped_column(String(32), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    previewable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sync_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sync_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    sync_collection: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sync_chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    uploaded_by: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="documents")
+    chunks: Mapped[list[KnowledgeChunk]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
+
+class KnowledgeChunk(ProductBase):
+    """知识文档切片元数据。"""
+
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint("document_id", "chunk_index", name="uk_knowledge_chunks_document_index"),
+        UniqueConstraint("chunk_id", name="uk_knowledge_chunks_chunk_id"),
+        Index("idx_knowledge_chunks_base", "knowledge_base_id", "chunk_index"),
+        Index("idx_knowledge_chunks_workspace", "tenant_id", "workspace_id"),
+    )
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    knowledge_base_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    document_id: Mapped[int] = mapped_column(
+        ID_TYPE,
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    vector_collection: Mapped[str] = mapped_column(String(128), nullable=False)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
 
 
 class Conversation(ProductBase, TimestampMixin):

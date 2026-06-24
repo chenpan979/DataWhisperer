@@ -15,6 +15,9 @@ from app.db.product_models import (
     Conversation,
     DataSource,
     DataSourceCredential,
+    KnowledgeBase,
+    KnowledgeChunk,
+    KnowledgeDocument,
     ModelCredential,
     ModelProfile,
     ModelProvider,
@@ -1023,6 +1026,165 @@ class SchemaRepository:
             SchemaRelationship.data_source_id == data_source_id
         )
         return list(self.session.scalars(statement).all())
+
+
+class KnowledgeRepository:
+    """知识库仓储。
+
+    知识库按租户和工作空间隔离；本地文件系统只保存物理文件，
+    文件归属、同步状态和 chunk 元数据都由产品库记录。
+    """
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def ensure_default_base(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        created_by: int | None = None,
+    ) -> KnowledgeBase:
+        """确保工作空间有默认知识库。"""
+
+        statement = select(KnowledgeBase).where(
+            KnowledgeBase.tenant_id == tenant_id,
+            KnowledgeBase.workspace_id == workspace_id,
+            KnowledgeBase.is_default.is_(True),
+            KnowledgeBase.status == "active",
+        )
+        knowledge_base = self.session.scalar(statement)
+        if knowledge_base is not None:
+            return knowledge_base
+        knowledge_base = KnowledgeBase(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            name="默认知识库",
+            description="当前工作空间默认的 RAG 业务知识库。",
+            status="active",
+            is_default=True,
+            created_by=created_by,
+        )
+        self.session.add(knowledge_base)
+        self.session.flush()
+        return knowledge_base
+
+    def list_documents(self, *, workspace_id: int) -> list[KnowledgeDocument]:
+        """列出当前工作空间的知识库文档。"""
+
+        statement = (
+            select(KnowledgeDocument)
+            .where(KnowledgeDocument.workspace_id == workspace_id)
+            .order_by(KnowledgeDocument.created_at.desc())
+        )
+        return list(self.session.scalars(statement).all())
+
+    def get_document_by_file(
+        self,
+        *,
+        workspace_id: int,
+        file_id: str,
+    ) -> KnowledgeDocument | None:
+        """按前端文件 ID 读取文档，必须限定 workspace。"""
+
+        statement = select(KnowledgeDocument).where(
+            KnowledgeDocument.workspace_id == workspace_id,
+            KnowledgeDocument.file_id == file_id,
+        )
+        return self.session.scalar(statement)
+
+    def create_document(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        knowledge_base_id: int,
+        file_id: str,
+        name: str,
+        stored_name: str,
+        extension: str,
+        size_bytes: int,
+        previewable: bool,
+        uploaded_by: int | None = None,
+    ) -> KnowledgeDocument:
+        """登记一个上传文档。"""
+
+        document = KnowledgeDocument(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            file_id=file_id,
+            name=name,
+            stored_name=stored_name,
+            extension=extension,
+            size_bytes=size_bytes,
+            previewable=previewable,
+            sync_status="pending",
+            uploaded_by=uploaded_by,
+        )
+        self.session.add(document)
+        self.session.flush()
+        return document
+
+    def update_document_sync(
+        self,
+        document: KnowledgeDocument,
+        *,
+        status: str,
+        message: str | None,
+        collection: str | None,
+        chunk_count: int | None,
+        synced_at,
+    ) -> KnowledgeDocument:
+        """更新文档向量同步状态。"""
+
+        document.sync_status = status
+        document.sync_message = message
+        document.sync_collection = collection
+        document.sync_chunk_count = chunk_count
+        document.synced_at = _coerce_datetime(synced_at)
+        self.session.flush()
+        return document
+
+    def replace_chunks(self, document: KnowledgeDocument, chunks: Sequence[Any]) -> int:
+        """以文档为粒度重建切片元数据。"""
+
+        self.session.execute(delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document.id))
+        for chunk in chunks:
+            self.session.add(
+                KnowledgeChunk(
+                    tenant_id=document.tenant_id,
+                    workspace_id=document.workspace_id,
+                    knowledge_base_id=document.knowledge_base_id,
+                    document_id=document.id,
+                    chunk_id=chunk.chunk_id,
+                    chunk_index=chunk.chunk_index,
+                    content=chunk.content,
+                    content_hash=chunk.content_hash,
+                    vector_collection=chunk.vector_collection,
+                    synced_at=_coerce_datetime(chunk.synced_at),
+                )
+            )
+        self.session.flush()
+        return len(chunks)
+
+    def delete_document(self, document: KnowledgeDocument) -> None:
+        """删除文档及其切片元数据。"""
+
+        self.session.delete(document)
+        self.session.flush()
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+    """把 API/同步层传入的时间统一转换为数据库可写入的 DateTime。
+
+    RAG 同步结果面向前端时使用 ISO 字符串，产品库字段使用 DateTime。
+    这里集中转换，避免调用方到处重复处理，也方便后续替换为真正的领域事件。
+    """
+
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
 
 
 class ConversationRepository:

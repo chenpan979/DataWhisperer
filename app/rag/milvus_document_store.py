@@ -13,6 +13,10 @@ class MilvusRagDocument:
     """
 
     chunk_id: str
+    tenant_id: str
+    workspace_id: str
+    knowledge_base_id: str
+    document_id: str
     file_id: str
     file_name: str
     chunk_index: int
@@ -56,6 +60,10 @@ class MilvusRagDocumentStore:
                 {
                     "id": document.chunk_id,
                     "vector": document.vector,
+                    "tenant_id": document.tenant_id,
+                    "workspace_id": document.workspace_id,
+                    "knowledge_base_id": document.knowledge_base_id,
+                    "document_id": document.document_id,
                     "file_id": document.file_id,
                     "file_name": document.file_name,
                     "chunk_index": document.chunk_index,

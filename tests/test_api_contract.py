@@ -56,13 +56,13 @@ def test_console_static_fragments_are_served() -> None:
     index_response = client.get("/")
     assert index_response.status_code == 200
     assert "/static/assets/bootstrap.js" in index_response.text
-    assert "v=3.13.11" in index_response.text
+    assert "v=3.13.12" in index_response.text
     assert "/static/partials/icon-sprite.html" in index_response.text
     assert "/static/partials/auth-shell.html" in index_response.text
     assert "/static/partials/app-shell.html" in index_response.text
 
     bootstrap_js = Path("static/assets/bootstrap.js").read_text(encoding="utf-8")
-    assert 'const appVersion = "3.13.11"' in bootstrap_js
+    assert 'const appVersion = "3.13.12"' in bootstrap_js
 
     for path in [
         "/static/partials/icon-sprite.html",
@@ -95,6 +95,9 @@ def test_product_schema_migration_script_contains_core_tables() -> None:
         "schema_tables",
         "schema_columns",
         "schema_relationships",
+        "knowledge_bases",
+        "knowledge_documents",
+        "knowledge_chunks",
         "conversations",
         "chat_messages",
         "analysis_runs",
@@ -153,3 +156,15 @@ def test_v31310_upgrade_script_adds_security_policy_table() -> None:
     assert "default_limit" in sql
     assert "max_limit" in sql
     assert "audit_trace_enabled" in sql
+
+
+
+def test_v31312_upgrade_script_adds_knowledge_base_tables() -> None:
+    script_path = Path("scripts/upgrade_product_schema_v3_13_12.sql")
+    sql = script_path.read_text(encoding="utf-8").lower()
+
+    for table_name in ["knowledge_bases", "knowledge_documents", "knowledge_chunks"]:
+        assert f"create table if not exists {table_name}" in sql
+    assert "workspace_id" in sql
+    assert "knowledge_base_id" in sql
+    assert "默认知识库" in sql

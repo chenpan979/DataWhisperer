@@ -12,6 +12,18 @@ from app.tools.file_store import ManagedFileStore, get_rag_file_store
 
 
 @dataclass(frozen=True)
+class RagIndexedChunk:
+    """一次 RAG 同步生成的切片元数据。"""
+
+    chunk_id: str
+    chunk_index: int
+    content: str
+    content_hash: str
+    vector_collection: str
+    synced_at: str
+
+
+@dataclass(frozen=True)
 class RagFileSyncResult:
     """RAG 文件同步结果。
 
@@ -27,6 +39,7 @@ class RagFileSyncResult:
     collection: str | None = None
     chunk_count: int = 0
     synced_at: str | None = None
+    chunks: tuple[RagIndexedChunk, ...] = ()
 
     def to_metadata(self) -> dict[str, object | None]:
         """转换成 ManagedFile 元数据字段。"""
@@ -87,6 +100,10 @@ def sync_rag_file_to_milvus(
     settings: Settings | None = None,
     embedder: TextEmbedder | None = None,
     vector_store: MilvusRagDocumentStore | None = None,
+    tenant_id: int | str | None = None,
+    workspace_id: int | str | None = None,
+    knowledge_base_id: int | str | None = None,
+    document_id: int | str | None = None,
 ) -> RagFileSyncResult:
     """把一个已上传 RAG 文件切片并同步到 Milvus。
 
@@ -133,16 +150,31 @@ def sync_rag_file_to_milvus(
 
         embedder = embedder or create_text_embedder(settings)
         vectors = _embed_chunks(embedder, chunks)
-        documents = [
-            MilvusRagDocument(
+        indexed_chunks = tuple(
+            RagIndexedChunk(
                 chunk_id=_chunk_id(file.id, index, chunk),
-                file_id=file.id,
-                file_name=file.name,
                 chunk_index=index,
                 content=chunk,
-                vector=vectors[index],
+                content_hash=_content_hash(chunk),
+                vector_collection=settings.milvus_rag_collection,
+                synced_at=attempted_at,
             )
             for index, chunk in enumerate(chunks)
+        )
+        documents = [
+            MilvusRagDocument(
+                chunk_id=chunk.chunk_id,
+                tenant_id=_scope_value(tenant_id),
+                workspace_id=_scope_value(workspace_id),
+                knowledge_base_id=_scope_value(knowledge_base_id),
+                document_id=_scope_value(document_id),
+                file_id=file.id,
+                file_name=file.name,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+                vector=vectors[index],
+            )
+            for index, chunk in enumerate(indexed_chunks)
         ]
         written = vector_store.replace_file_documents(file.id, documents)
     except Exception as exc:  # pragma: no cover - concrete failures depend on local Milvus/DashScope
@@ -160,6 +192,7 @@ def sync_rag_file_to_milvus(
         collection=settings.milvus_rag_collection,
         chunk_count=written,
         synced_at=attempted_at,
+        chunks=indexed_chunks[:written],
     )
 
 
@@ -196,3 +229,11 @@ def _embed_chunks(embedder: TextEmbedder, chunks: list[str]) -> list[list[float]
 def _chunk_id(file_id: str, index: int, content: str) -> str:
     digest = hashlib.md5(content.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     return f"{file_id}_{index}_{digest}"
+
+
+def _content_hash(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _scope_value(value: int | str | None) -> str:
+    return str(value) if value is not None else "local"

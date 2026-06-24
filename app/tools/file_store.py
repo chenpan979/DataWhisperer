@@ -50,7 +50,7 @@ class ManagedFileStore:
     """本地文件管理工具。
 
     V3.5 的页面上传先落到本地 storage 目录，形成一个稳定的“资料管理台”。
-    V3.13.11 开始，RAG 知识库文件上传后会把同步状态写回元数据，
+    V3.13.12 开始，RAG 知识库文件上传后会把同步状态写回元数据，
     前端可以直接看到文件是否已经完成 Milvus 向量索引。
     """
 
@@ -153,6 +153,22 @@ class ManagedFileStore:
             return None
         metadata["size_bytes"] = file_path.stat().st_size
         return _managed_file_from_metadata(metadata)
+
+    def metadata(self, file_id: str) -> dict[str, Any] | None:
+        """读取内部文件元数据。
+
+        API 层登记知识库文档时需要 stored_name；这个字段不暴露给前端，
+        但可以在服务端内部安全读取。
+        """
+
+        metadata = self._read_metadata(file_id)
+        if not metadata:
+            return None
+        file_path = self._resolve_file(metadata["stored_name"])
+        if not file_path.exists():
+            return None
+        metadata["size_bytes"] = file_path.stat().st_size
+        return metadata
 
     def update_metadata(self, file_id: str, values: dict[str, Any]) -> ManagedFile | None:
         """更新文件展示元数据。
