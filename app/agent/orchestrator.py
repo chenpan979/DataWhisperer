@@ -3,6 +3,13 @@ from sqlalchemy.engine import Engine
 from app.core.config import get_settings
 from app.core.llm import LLMClient
 from app.models.query import QueryRequest, QueryResponse, TraceStep
+from app.rag.document_retriever import (
+    NO_KNOWLEDGE_CONTEXT,
+    RagDocumentRetriever,
+    RagKnowledgeScope,
+    empty_rag_document_result,
+    get_rag_document_retriever,
+)
 from app.rag.metric_retriever import get_metric_retriever
 from app.tools.chart_tool import recommend_chart
 from app.tools.insight_tool import generate_insight
@@ -31,6 +38,8 @@ class DataAnalysisOrchestrator:
         engine: Engine,
         llm: LLMClient,
         security_policy: QuerySecurityPolicy | None = None,
+        knowledge_scope: RagKnowledgeScope | None = None,
+        rag_retriever: RagDocumentRetriever | None = None,
     ):
         self.engine = engine
         self.llm = llm
@@ -39,6 +48,8 @@ class DataAnalysisOrchestrator:
             system_max_rows=self.settings.max_query_rows,
             query_timeout_seconds=self.settings.query_timeout_seconds,
         )
+        self.knowledge_scope = knowledge_scope
+        self.rag_retriever = rag_retriever
 
     async def _execute_with_optional_repair(
         self,
@@ -111,6 +122,19 @@ class DataAnalysisOrchestrator:
             warnings.append("首次 SQL 执行失败，系统已自动修复并重新执行。")
             return safe_sql, columns, rows, repaired, 1
 
+
+    def _retrieve_workspace_knowledge(self, question: str):
+        """检索当前工作空间上传的知识库资料。
+
+        未登录 demo 模式没有租户上下文，因此跳过这一步。登录后必须带 scope 检索，
+        保证 Milvus 中不同租户、不同工作空间的知识片段不会互相串用。
+        """
+
+        if self.knowledge_scope is None:
+            return empty_rag_document_result()
+        retriever = self.rag_retriever or get_rag_document_retriever()
+        return retriever.retrieve(question, scope=self.knowledge_scope)
+
     async def run(self, request: QueryRequest) -> QueryResponse:
         """执行一次完整的自然语言数据分析请求。"""
 
@@ -139,6 +163,29 @@ class DataAnalysisOrchestrator:
             )
         )
 
+        # V3.13.13：检索当前工作空间上传的知识库资料。
+        # 这一步为后续 RAG Agent 打底：现在先把命中的知识片段注入 SQL prompt，
+        # 后面拆多智能体时可以把它独立成专门的 RAG 检索 Agent。
+        knowledge_retrieval = self._retrieve_workspace_knowledge(request.question)
+        if self.knowledge_scope is not None:
+            knowledge_detail = (
+                ", ".join(knowledge_retrieval.sources)
+                if knowledge_retrieval.sources
+                else "未命中工作空间知识库"
+            )
+            trace.append(
+                TraceStep(
+                    name="knowledge_retrieval",
+                    status="ok",
+                    detail=f"{knowledge_detail}（{knowledge_retrieval.retrieval_mode}）",
+                )
+            )
+
+        retrieval_context = _combine_retrieval_contexts(
+            metric_context=metric_retrieval.prompt_context,
+            knowledge_context=knowledge_retrieval.prompt_context,
+        )
+
         # 第二步：生成 SQL。
         # 命中内置示例问题时优先走稳定规则；自由问题则交给大模型生成。
         # 这样既保证演示问题稳定，又保留真实 Text-to-SQL 能力。
@@ -146,7 +193,7 @@ class DataAnalysisOrchestrator:
             request.question,
             schema_prompt,
             self.llm,
-            metric_context=metric_retrieval.prompt_context,
+            metric_context=retrieval_context,
         )
         if generated.used_fallback:
             warnings.append("当前 SQL 由本地演示规则生成，用于保证示例问题稳定可运行。")
@@ -182,7 +229,7 @@ class DataAnalysisOrchestrator:
             await self._execute_with_optional_repair(
                 question=request.question,
                 schema_prompt=schema_prompt,
-                metric_context=metric_retrieval.prompt_context,
+                metric_context=retrieval_context,
                 generated=generated,
                 max_rows=max_rows,
                 trace=trace,
@@ -233,5 +280,16 @@ class DataAnalysisOrchestrator:
             trace_steps=trace,
             prompt_versions=prompt_versions,
             retrieved_metrics=metric_retrieval.names,
+            retrieved_knowledge=knowledge_retrieval.sources,
             repair_count=repair_count,
         )
+
+def _combine_retrieval_contexts(*, metric_context: str, knowledge_context: str) -> str:
+    """合并内置指标口径和工作空间知识库上下文。"""
+
+    sections = []
+    if metric_context:
+        sections.append("## 内置业务指标口径\n" + metric_context)
+    if knowledge_context and knowledge_context != NO_KNOWLEDGE_CONTEXT:
+        sections.append("## 工作空间知识库资料\n" + knowledge_context)
+    return "\n\n".join(sections)

@@ -19,6 +19,8 @@ from app.models.conversations import (
     ConversationUpdate,
 )
 from app.models.query import QueryRequest, QueryResponse
+from app.rag.document_retriever import RagKnowledgeScope
+from app.repositories.product import KnowledgeRepository
 from app.tools.data_source_engine import get_default_data_source_engine
 from app.tools.security_policy import QuerySecurityPolicy, default_query_security_policy
 from app.tools.database_conversation_store import DatabaseConversationStore
@@ -42,10 +44,12 @@ async def query_data(
         auth_context = _resolve_auth_context(authorization=authorization, session=session)
         engine = _build_query_engine(auth_context=auth_context, session=session)
         security_policy = _build_query_security_policy(auth_context=auth_context, session=session)
+        knowledge_scope = _build_knowledge_scope(auth_context=auth_context, session=session)
         orchestrator = DataAnalysisOrchestrator(
             engine=engine,
             llm=get_llm_client(),
             security_policy=security_policy,
+            knowledge_scope=knowledge_scope,
         )
         return await orchestrator.run(request)
     except HTTPException:
@@ -97,6 +101,28 @@ def _build_query_security_policy(
     session.commit()
     return build_query_security_policy(policy)
 
+
+
+def _build_knowledge_scope(
+    *,
+    auth_context: AuthContext | None,
+    session: Session,
+) -> RagKnowledgeScope | None:
+    """为登录用户构建工作空间知识库检索范围。"""
+
+    if auth_context is None:
+        return None
+    knowledge_base = KnowledgeRepository(session).ensure_default_base(
+        tenant_id=auth_context.tenant.id,
+        workspace_id=auth_context.workspace.id,
+        created_by=auth_context.user.id,
+    )
+    session.commit()
+    return RagKnowledgeScope(
+        tenant_id=auth_context.tenant.id,
+        workspace_id=auth_context.workspace.id,
+        knowledge_base_id=knowledge_base.id,
+    )
 
 def _conversation_store(
     auth_context: Annotated[AuthContext, Depends(require_auth_context)],

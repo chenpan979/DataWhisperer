@@ -23,7 +23,7 @@ from app.repositories.product import (  # noqa: E402
 @pytest.fixture
 def chat_client(
     monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[tuple[TestClient, sessionmaker[Session], list[object]]]:
+) -> Iterator[tuple[TestClient, sessionmaker[Session], list[object], list[object]]]:
     """创建 AI 查数测试客户端，并把真实 Orchestrator 替换成轻量假对象。"""
 
     product_engine = create_engine(
@@ -36,12 +36,20 @@ def chat_client(
     product_session_factory = sessionmaker(bind=product_engine, expire_on_commit=False, future=True)
 
     captured_engines: list[object] = []
+    captured_scopes: list[object] = []
 
     class DummyOrchestrator:
         """只记录传入的业务库 Engine，不真的调用 LLM 或执行 SQL。"""
 
-        def __init__(self, engine: object, llm: object, security_policy: object | None = None):
+        def __init__(
+            self,
+            engine: object,
+            llm: object,
+            security_policy: object | None = None,
+            knowledge_scope: object | None = None,
+        ):
             captured_engines.append(engine)
+            captured_scopes.append(knowledge_scope)
 
         async def run(self, request) -> QueryResponse:
             return QueryResponse(
@@ -64,17 +72,17 @@ def chat_client(
     app = create_app()
     app.dependency_overrides[get_product_session] = override_product_session
     with TestClient(app) as client:
-        yield client, product_session_factory, captured_engines
+        yield client, product_session_factory, captured_engines, captured_scopes
     app.dependency_overrides.clear()
 
 
 def test_chat_query_uses_default_data_source_when_logged_in(
-    chat_client: tuple[TestClient, sessionmaker[Session], list[object]],
+    chat_client: tuple[TestClient, sessionmaker[Session], list[object], list[object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """登录态 AI 查数应该和系统设置中的默认数据源保持一致。"""
 
-    client, session_factory, captured_engines = chat_client
+    client, session_factory, captured_engines, captured_scopes = chat_client
     headers = _seed_product_workspace_and_login(client, session_factory)
     authenticated_engine = object()
     fallback_engine = object()
@@ -95,15 +103,19 @@ def test_chat_query_uses_default_data_source_when_logged_in(
     assert response.status_code == 200
     assert response.json()["generated_sql"] == "SELECT 1"
     assert captured_engines[-1] is authenticated_engine
+    assert captured_scopes[-1] is not None
+    assert getattr(captured_scopes[-1], "tenant_id") is not None
+    assert getattr(captured_scopes[-1], "workspace_id") is not None
+    assert getattr(captured_scopes[-1], "knowledge_base_id") is not None
 
 
 def test_chat_query_keeps_env_database_fallback_without_login(
-    chat_client: tuple[TestClient, sessionmaker[Session], list[object]],
+    chat_client: tuple[TestClient, sessionmaker[Session], list[object], list[object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """未登录调试接口时继续使用 `.env` 中的 DATABASE_URL。"""
 
-    client, _session_factory, captured_engines = chat_client
+    client, _session_factory, captured_engines, captured_scopes = chat_client
     fallback_engine = object()
 
     monkeypatch.setattr(chat_api, "get_engine", lambda: fallback_engine)
@@ -115,6 +127,7 @@ def test_chat_query_keeps_env_database_fallback_without_login(
 
     assert response.status_code == 200
     assert captured_engines[-1] is fallback_engine
+    assert captured_scopes[-1] is None
 
 
 def _seed_product_workspace_and_login(

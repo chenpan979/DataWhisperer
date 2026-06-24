@@ -61,6 +61,10 @@ class QueryResponse(BaseModel):
         default_factory=list,
         description="Business metric definitions retrieved for this request.",
     )
+    retrieved_knowledge: list[str] = Field(
+        default_factory=list,
+        description="Workspace knowledge-base chunks retrieved for this request.",
+    )
     repair_count: int = Field(
         default=0,
         description="How many SQL repair attempts were used.",

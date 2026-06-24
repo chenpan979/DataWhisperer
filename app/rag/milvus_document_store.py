@@ -24,6 +24,22 @@ class MilvusRagDocument:
     vector: list[float]
 
 
+@dataclass(frozen=True)
+class MilvusRagSearchHit:
+    """Milvus 向量检索命中的 RAG 文档切片。"""
+
+    chunk_id: str
+    tenant_id: str
+    workspace_id: str
+    knowledge_base_id: str
+    document_id: str
+    file_id: str
+    file_name: str
+    chunk_index: int
+    content: str
+    score: float
+
+
 class MilvusRagDocumentStore:
     """RAG 知识库文件的 Milvus 访问层。
 
@@ -74,6 +90,68 @@ class MilvusRagDocumentStore:
         )
         return len(documents)
 
+
+    def search(
+        self,
+        vector: list[float],
+        *,
+        tenant_id: int | str,
+        workspace_id: int | str,
+        knowledge_base_id: int | str | None = None,
+        top_k: int = 4,
+    ) -> list[MilvusRagSearchHit]:
+        """按当前租户/工作空间过滤检索 RAG 文档切片。
+
+        多租户场景下，向量库里会同时保存不同工作空间的知识片段。
+        这里必须把 tenant_id 和 workspace_id 放进 Milvus filter，避免知识库串租户。
+        """
+
+        client = self._client()
+        if not client.has_collection(self.collection_name):
+            return []
+        raw_results = client.search(
+            collection_name=self.collection_name,
+            data=[vector],
+            limit=top_k,
+            filter=_build_scope_filter(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            ),
+            output_fields=[
+                "id",
+                "tenant_id",
+                "workspace_id",
+                "knowledge_base_id",
+                "document_id",
+                "file_id",
+                "file_name",
+                "chunk_index",
+                "content",
+            ],
+        )
+        if not raw_results:
+            return []
+
+        hits: list[MilvusRagSearchHit] = []
+        for item in raw_results[0]:
+            entity = _extract_entity(item)
+            hits.append(
+                MilvusRagSearchHit(
+                    chunk_id=str(entity.get("id", "")),
+                    tenant_id=str(entity.get("tenant_id", "")),
+                    workspace_id=str(entity.get("workspace_id", "")),
+                    knowledge_base_id=str(entity.get("knowledge_base_id", "")),
+                    document_id=str(entity.get("document_id", "")),
+                    file_id=str(entity.get("file_id", "")),
+                    file_name=str(entity.get("file_name", "")),
+                    chunk_index=int(entity.get("chunk_index", 0) or 0),
+                    content=str(entity.get("content", "")),
+                    score=float(item.get("distance", item.get("score", 0.0))),
+                )
+            )
+        return hits
+
     def delete_file_documents(self, file_id: str) -> bool:
         """删除某个上传文件对应的所有向量切片。"""
 
@@ -114,6 +192,29 @@ class MilvusRagDocumentStore:
                 '未安装 pymilvus，无法同步 RAG 文件到 Milvus。请先执行 pip install -e \".[milvus]\"。'
             ) from exc
         return MilvusClient(uri=self.uri)
+
+
+def _build_scope_filter(
+    *,
+    tenant_id: int | str,
+    workspace_id: int | str,
+    knowledge_base_id: int | str | None = None,
+) -> str:
+    parts = [
+        f'tenant_id == "{_escape_filter_value(str(tenant_id))}"',
+        f'workspace_id == "{_escape_filter_value(str(workspace_id))}"',
+    ]
+    if knowledge_base_id is not None:
+        parts.append(f'knowledge_base_id == "{_escape_filter_value(str(knowledge_base_id))}"')
+    return " and ".join(parts)
+
+
+def _extract_entity(hit: dict[str, Any]) -> dict[str, Any]:
+    """兼容不同 pymilvus 版本的 search 返回结构。"""
+
+    if "entity" in hit and isinstance(hit["entity"], dict):
+        return hit["entity"]
+    return hit
 
 
 def _escape_filter_value(value: str) -> str:
