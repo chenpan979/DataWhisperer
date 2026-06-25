@@ -23,7 +23,7 @@ def test_run_evaluations_api_returns_quality_report() -> None:
         "metric_retrieval",
     }
     assert payload["cases"]
-    assert payload["version_snapshots"][-1]["version"] == "v4.0.0"
+    assert payload["version_snapshots"][-1]["version"] == "v4.1.0"
     assert len(payload["trend_points"]) >= 4
     assert payload["issue_distribution"]
     assert len(payload["recent_runs"]) == 3

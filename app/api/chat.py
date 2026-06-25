@@ -5,11 +5,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.api.auth import AuthContext, require_auth_context
+from app.api.model_settings import _ensure_default_model_settings
 from app.api.security_policies import build_query_security_policy, ensure_default_security_policy
 from app.agent.orchestrator import DataAnalysisOrchestrator
 from app.core.config import get_settings
 from app.core.database import get_engine
-from app.core.llm import get_llm_client
+from app.core.llm import LLMClient, get_llm_client
 from app.core.product_database import get_product_session
 from app.models.conversations import (
     Conversation,
@@ -21,9 +22,10 @@ from app.models.conversations import (
 from app.models.query import QueryRequest, QueryResponse
 from app.rag.document_retriever import RagKnowledgeScope
 from app.repositories.product import KnowledgeRepository
+from app.tools.agent_model_router import AgentModelRouter, build_agent_model_router
 from app.tools.data_source_engine import get_default_data_source_engine
-from app.tools.security_policy import QuerySecurityPolicy, default_query_security_policy
 from app.tools.database_conversation_store import DatabaseConversationStore
+from app.tools.security_policy import QuerySecurityPolicy, default_query_security_policy
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -45,11 +47,18 @@ async def query_data(
         engine = _build_query_engine(auth_context=auth_context, session=session)
         security_policy = _build_query_security_policy(auth_context=auth_context, session=session)
         knowledge_scope = _build_knowledge_scope(auth_context=auth_context, session=session)
+        llm = get_llm_client()
+        agent_model_router = _build_agent_model_router(
+            auth_context=auth_context,
+            session=session,
+            fallback_llm=llm,
+        )
         orchestrator = DataAnalysisOrchestrator(
             engine=engine,
-            llm=get_llm_client(),
+            llm=llm,
             security_policy=security_policy,
             knowledge_scope=knowledge_scope,
+            agent_model_router=agent_model_router,
         )
         return await orchestrator.run(request)
     except HTTPException:
@@ -123,6 +132,26 @@ def _build_knowledge_scope(
         workspace_id=auth_context.workspace.id,
         knowledge_base_id=knowledge_base.id,
     )
+
+
+def _build_agent_model_router(
+    *,
+    auth_context: AuthContext | None,
+    session: Session,
+    fallback_llm: LLMClient,
+) -> AgentModelRouter:
+    """Resolve workspace model bindings for the SQL-of-Thought agent pipeline."""
+
+    if auth_context is None:
+        return AgentModelRouter(default_llm=fallback_llm)
+    _ensure_default_model_settings(session=session, auth_context=auth_context)
+    session.commit()
+    return build_agent_model_router(
+        session=session,
+        auth_context=auth_context,
+        fallback_llm=fallback_llm,
+    )
+
 
 def _conversation_store(
     auth_context: Annotated[AuthContext, Depends(require_auth_context)],

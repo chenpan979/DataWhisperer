@@ -13,10 +13,24 @@ class LLMClient:
     OpenAI 或公司内部模型网关。
     """
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ):
         self.settings = settings or get_settings()
+        self.base_url = base_url or self.settings.effective_llm_base_url
+        self.api_key = api_key if api_key is not None else self.settings.effective_llm_api_key
+        self.model = model or self.settings.effective_llm_model
+        self.temperature = temperature if temperature is not None else self.settings.llm_temperature
+        self.max_tokens = max_tokens
         self._client = None
-        if self.settings.llm_enabled:
+        if self.api_key:
             try:
                 from openai import AsyncOpenAI
             except ImportError as exc:  # pragma: no cover - environment setup guard
@@ -25,8 +39,8 @@ class LLMClient:
                     "Install dependencies with: pip install -e ."
                 ) from exc
             self._client = AsyncOpenAI(
-                api_key=self.settings.effective_llm_api_key,
-                base_url=self.settings.effective_llm_base_url,
+                api_key=self.api_key,
+                base_url=self.base_url,
             )
 
     @property
@@ -43,11 +57,14 @@ class LLMClient:
 
         if not self._client:
             return None
-        response = await self._client.chat.completions.create(
-            model=self.settings.effective_llm_model,
-            messages=messages,
-            temperature=self.settings.llm_temperature,
-        )
+        request_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+        }
+        if self.max_tokens:
+            request_kwargs["max_tokens"] = self.max_tokens
+        response = await self._client.chat.completions.create(**request_kwargs)
         return response.choices[0].message.content or ""
 
     async def complete_json(self, messages: list[dict[str, str]]) -> dict[str, Any] | None:

@@ -47,6 +47,7 @@ def chat_client(
             llm: object,
             security_policy: object | None = None,
             knowledge_scope: object | None = None,
+            agent_model_router: object | None = None,
         ):
             captured_engines.append(engine)
             captured_scopes.append(knowledge_scope)

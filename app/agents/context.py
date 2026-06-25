@@ -15,6 +15,7 @@ from app.rag.document_retriever import (
     RagKnowledgeScope,
 )
 from app.rag.metric_retriever import MetricRetrievalResult
+from app.tools.agent_model_router import AgentModelRouter
 from app.tools.insight_tool import GeneratedInsight
 from app.tools.security_policy import QuerySecurityPolicy
 from app.tools.sql_tool import GeneratedSQL
@@ -69,6 +70,7 @@ class DataAnalysisAgentState:
     security_policy: QuerySecurityPolicy
     knowledge_scope: RagKnowledgeScope | None = None
     rag_retriever: RagDocumentRetriever | None = None
+    agent_model_router: AgentModelRouter | None = None
     trace: list[TraceStep] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     prompt_versions: dict[str, str] = field(default_factory=dict)
@@ -100,6 +102,20 @@ class DataAnalysisAgentState:
 
         if result and result.prompt_id and result.prompt_version:
             self.prompt_versions[result.prompt_id] = result.prompt_version
+
+    def llm_for(self, agent_key: str) -> LLMClient:
+        """按 Agent key 读取当前工作空间绑定的模型客户端。"""
+
+        if self.agent_model_router is None:
+            return self.llm
+        return self.agent_model_router.client_for(agent_key)
+
+    def model_trace_detail(self, agent_key: str) -> str:
+        """返回可写入执行轨迹的模型绑定摘要。"""
+
+        if self.agent_model_router is None:
+            return "model=runtime-default"
+        return self.agent_model_router.trace_detail(agent_key)
 
     @property
     def retrieved_metric_names(self) -> list[str]:

@@ -93,7 +93,7 @@ class SQLGenerationAgent:
         state.generated_sql = await generate_sql(
             state.request.question,
             state.schema_prompt,
-            state.llm,
+            state.llm_for("sql_agent"),
             metric_context=state.retrieval_context,
         )
         if state.generated_sql.used_fallback:
@@ -102,7 +102,11 @@ class SQLGenerationAgent:
         detail = state.generated_sql.explanation
         if state.generated_sql.prompt_id and state.generated_sql.prompt_version:
             detail = f"{detail}（prompt={state.generated_sql.prompt_id}@{state.generated_sql.prompt_version}）"
-        state.add_trace("generate_sql", "ok", f"SQLGenerationAgent：{detail}")
+        state.add_trace(
+            "generate_sql",
+            "ok",
+            f"SQLGenerationAgent: {detail}; {state.model_trace_detail('sql_agent')}",
+        )
 
 
 class ValidationExecutionAgent:
@@ -136,7 +140,7 @@ class ValidationExecutionAgent:
             state.repair_count,
         ) = await _execute_with_optional_repair(
             engine=state.engine,
-            llm=state.llm,
+            llm=state.llm_for("sql_agent"),
             question=state.request.question,
             schema_prompt=state.schema_prompt,
             retrieval_context=state.retrieval_context,
@@ -155,7 +159,11 @@ class ChartAgent:
 
     async def run(self, state: DataAnalysisAgentState) -> None:
         state.chart = recommend_chart(state.columns, state.rows, question=state.request.question)
-        state.add_trace("chart", "ok", f"ChartAgent：{state.chart.get('type', 'unknown')}")
+        state.add_trace(
+            "chart",
+            "ok",
+            f"ChartAgent: {state.chart.get('type', 'unknown')}; {state.model_trace_detail('chart_agent')}",
+        )
 
 
 class InsightAgent:
@@ -167,7 +175,7 @@ class InsightAgent:
             state.safe_sql,
             state.columns,
             state.rows,
-            state.llm,
+            state.llm_for("insight_agent"),
         )
         state.record_prompt_version(state.insight_result)
         if state.insight_result.prompt_id and state.insight_result.prompt_version:
@@ -176,7 +184,12 @@ class InsightAgent:
             detail = "使用本地兜底总结"
         else:
             detail = None
-        state.add_trace("insight", "ok", f"InsightAgent：{detail}" if detail else "InsightAgent")
+        model_detail = state.model_trace_detail("insight_agent")
+        state.add_trace(
+            "insight",
+            "ok",
+            f"InsightAgent: {detail}; {model_detail}" if detail else f"InsightAgent: {model_detail}",
+        )
 
 
 class DataAnalysisOrchestrator:
@@ -193,6 +206,7 @@ class DataAnalysisOrchestrator:
         security_policy: QuerySecurityPolicy | None = None,
         knowledge_scope: RagKnowledgeScope | None = None,
         rag_retriever: RagDocumentRetriever | None = None,
+        agent_model_router: Any | None = None,
         agents: list[Any] | None = None,
     ):
         self.engine = engine
@@ -204,6 +218,7 @@ class DataAnalysisOrchestrator:
         )
         self.knowledge_scope = knowledge_scope
         self.rag_retriever = rag_retriever
+        self.agent_model_router = agent_model_router
         self.agents = agents or [
             SchemaLinkingAgent(),
             KnowledgeRetrievalAgent(),
@@ -225,6 +240,7 @@ class DataAnalysisOrchestrator:
             security_policy=self.security_policy,
             knowledge_scope=self.knowledge_scope,
             rag_retriever=self.rag_retriever,
+            agent_model_router=self.agent_model_router,
         )
         for agent in self.agents:
             await agent.run(state)
