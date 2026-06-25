@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V4.1.1：Agent 模块拆分版本**。
+当前项目已经更新到 **V4.1.2：多智能体执行进度可视化版本**。
 
 版本入口：
 
@@ -89,8 +89,9 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v4.0.0`：引入 SQL-of-Thought 多智能体编排底座，将 AI 查数拆分为 Schema Linking、Knowledge Retrieval、Query Planning、SQL Generation、Validation/Execution、Chart 和 Insight 等 Agent，单库先跑稳，多库路由、MCP 工具和 Agent 评测后续扩展。
 - `v4.1.0`：系统设置里的 Agent 模型绑定正式接入 SQL-of-Thought 编排器，SQL 生成、SQL 修复和分析总结可以按工作空间 Profile 独立路由，trace 会显示实际使用的模型绑定。
 - `v4.1.1`：整理多智能体代码结构，将 Schema Linking、知识检索、查询规划、SQL 生成、校验执行、图表和结论 Agent 拆成独立文件，`app.agent` 仅保留历史兼容入口。
+- `v4.1.2`：升级 AI 查数等待态，新增多智能体执行进度下拉卡片，实时展示当前执行到哪个 Agent，完成后仍可展开查看 Agent 链路。
 
-项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 加入 RAG 业务知识增强，V4 开始把查数链路升级为 SQL-of-Thought 多智能体架构，V4.1 把系统设置中的 Agent 模型绑定接入运行时，V4.1.1 进一步把多智能体代码拆成一 Agent 一文件，后续会继续扩展多库路由、MCP 工具化和 Agent 协作评测。
+项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 加入 RAG 业务知识增强，V4 开始把查数链路升级为 SQL-of-Thought 多智能体架构，V4.1 把系统设置中的 Agent 模型绑定接入运行时，V4.1.1 进一步把多智能体代码拆成一 Agent 一文件，V4.1.2 把多智能体执行过程显性化展示到对话界面，后续会继续扩展多库路由、MCP 工具化和 Agent 协作评测。
 
 ## 项目亮点
 
@@ -111,6 +112,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V4 返回的 `trace_steps` 保持旧协议名称，同时在 detail 中标明对应 Agent，方便前端兼容和后端继续拆分。
 - V4.1 将系统设置里的 Agent 模型绑定接入运行时，SQL 生成、SQL 修复和分析总结可按 Profile 独立切换模型。
 - V4.1.1 将多智能体实现拆成独立模块，`app/agents` 是真实运行目录，`app/agent` 只是旧导入兼容层。
+- V4.1.2 在对话结果顶部新增 Agent 进度下拉，用户可以看到当前执行到 SchemaLinkingAgent、SQLGenerationAgent、InsightAgent 等哪一步。
 - V3.1 使用混合检索策略：关键词/别名精确匹配 + 本地 n-gram 语义相似度。
 - V3.2 增加指标检索评测集，检查指标召回是否正确、是否误召回禁止指标。
 - V3.3 增加 Milvus 向量数据库检索层，指标 Markdown 仍作为知识源，Milvus 作为可重建索引。
@@ -225,6 +227,7 @@ flowchart TD
 - V4 返回的 `trace_steps` 保持旧协议名称，同时在 detail 中标明对应 Agent，方便前端兼容和后端继续拆分。
 - V4.1 将系统设置里的 Agent 模型绑定接入运行时，SQL 生成、SQL 修复和分析总结可按 Profile 独立切换模型。
 - V4.1.1 将多智能体实现拆成独立模块，`app/agents` 是真实运行目录，`app/agent` 只是旧导入兼容层。
+- V4.1.2 在对话结果顶部新增 Agent 进度下拉，用户可以看到当前执行到 SchemaLinkingAgent、SQLGenerationAgent、InsightAgent 等哪一步。
 
 ## 目录结构
 
@@ -753,6 +756,7 @@ uvicorn app.main:app --reload --port 8081
 - V4：SQL-of-Thought 多智能体底座，先在单库场景拆分 Schema Linking、知识检索、查询规划、SQL 生成、校验执行、图表和结论 Agent。
 - V4.1：Agent 模型路由接入，SQL 生成、SQL 修复和分析总结可以按工作空间模型 Profile 独立运行。
 - V4.1.1：Agent 工程结构拆分，一个 Agent 一个模块，降低后续多智能体扩展成本。
+- V4.1.2：对话页展示多智能体执行进度，让用户能感知当前执行到哪个 Agent。
 - V4.2：多智能体评测增强，按 Agent 维度观察 SQL 正确率、修复成功率、检索命中率和结论质量。
 - V5：MCP 工具化，把数据库查询、图表生成、导出能力包装成可复用工具。
 - V6：多库路由与更完整的 Agent 协作，支持跨库选择、权限边界和企业级审计。

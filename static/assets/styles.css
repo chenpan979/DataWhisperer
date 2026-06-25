@@ -4675,6 +4675,163 @@ td {
 #analysisView .thinking-dot:nth-child(3) {
   animation-delay: 0.32s;
 }
+#analysisView .agent-progress-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fffd 100%);
+  border: 1px solid #d8ece7;
+  border-radius: 16px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+  margin: 0 0 12px;
+  overflow: hidden;
+  transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease), transform 180ms var(--ease);
+}
+#analysisView .result-message:not(.is-loading) .agent-progress-panel {
+  border-radius: 14px;
+  box-shadow: none;
+  margin: 16px 22px 0;
+}
+#analysisView .agent-progress-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #0f2748;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 18px minmax(0, 1fr) 22px;
+  padding: 14px 16px;
+  text-align: left;
+  width: 100%;
+}
+#analysisView .agent-progress-toggle svg {
+  color: #64748b;
+  transition: transform 180ms var(--ease);
+}
+#analysisView .agent-progress-panel:not(.collapsed) .agent-progress-toggle svg {
+  transform: rotate(180deg);
+}
+#analysisView .agent-progress-pulse {
+  background: #0d9488;
+  border-radius: 999px;
+  box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.32);
+  height: 10px;
+  position: relative;
+  width: 10px;
+}
+#analysisView .agent-progress-panel.working .agent-progress-pulse {
+  animation: pulse 1.3s ease-in-out infinite;
+}
+#analysisView .agent-progress-panel.ok .agent-progress-pulse {
+  background: #10b981;
+}
+#analysisView .agent-progress-panel.failed .agent-progress-pulse {
+  background: var(--danger);
+}
+#analysisView .agent-progress-title {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+#analysisView .agent-progress-title strong {
+  font-size: 14px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#analysisView .agent-progress-title small {
+  color: #64748b;
+  font-size: 12px;
+}
+#analysisView .agent-progress-list {
+  border-top: 1px solid #e7f1ee;
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: hidden;
+  padding: 12px;
+  transition: max-height 220ms var(--ease), padding 180ms var(--ease);
+}
+#analysisView .agent-progress-panel.collapsed .agent-progress-list {
+  border-top: 0;
+  max-height: 0;
+  padding-bottom: 0;
+  padding-top: 0;
+}
+#analysisView .agent-step {
+  align-items: center;
+  background: #fbfdfc;
+  border: 1px solid #e8f1ee;
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  padding: 10px;
+}
+#analysisView .agent-step-index {
+  align-items: center;
+  background: #f1f7f5;
+  border-radius: 999px;
+  color: #64748b;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+#analysisView .agent-step-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+#analysisView .agent-step-main strong {
+  color: #0f2748;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#analysisView .agent-step-main small,
+#analysisView .agent-step-detail {
+  color: #64748b;
+  font-size: 12px;
+}
+#analysisView .agent-step-status {
+  border: 1px solid #dbe7e3;
+  border-radius: 999px;
+  color: #64748b;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+#analysisView .agent-step-detail {
+  grid-column: 2 / 4;
+  line-height: 1.5;
+}
+#analysisView .agent-step.ok .agent-step-index,
+#analysisView .agent-step.ok .agent-step-status {
+  background: #e7f6f1;
+  border-color: #b7dfd2;
+  color: var(--accent-strong);
+}
+#analysisView .agent-step.active .agent-step-index,
+#analysisView .agent-step.active .agent-step-status {
+  animation: pulse 1.2s ease-in-out infinite;
+  background: #eef4ff;
+  border-color: #bdcffd;
+  color: var(--blue);
+}
+#analysisView .agent-step.failed .agent-step-index,
+#analysisView .agent-step.failed .agent-step-status {
+  background: #fff1f0;
+  border-color: #f2c2bd;
+  color: var(--danger);
+}
+#analysisView .result-message.is-loading .agent-progress-panel {
+  display: block;
+  min-width: min(620px, calc(100vw - 56px));
+}
+#analysisView .result-message.is-loading .analysis-thinking {
+  display: none;
+}
 #analysisView .chat-insight {
   min-height: 0;
   padding: 24px 24px 18px;
@@ -4711,10 +4868,10 @@ td {
   background: transparent;
   border: 0;
   box-shadow: none;
-  width: max-content;
+  width: min(680px, 100%);
 }
 #analysisView .result-message.is-loading .analysis-thinking {
-  display: inline-flex;
+  display: none;
 }
 #analysisView .result-card .tabs {
   background: #f8fafc;

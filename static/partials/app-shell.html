@@ -146,12 +146,23 @@
                       <span class="state-label" id="runState">空闲</span>
                     </div>
                     <div class="chat-bubble result-bubble">
-                      <div class="analysis-thinking" aria-live="polite" aria-label="正在分析数据中">
+                      <div class="analysis-thinking" aria-live="polite" aria-label="多智能体正在协作分析">
                         <span class="thinking-dot"></span>
                         <span class="thinking-dot"></span>
                         <span class="thinking-dot"></span>
-                        <span>正在分析数据中...</span>
+                        <span>多智能体协作中...</span>
                       </div>
+                      <section class="agent-progress-panel collapsed" id="agentProgressPanel" aria-live="polite">
+                        <button class="agent-progress-toggle" id="agentProgressToggle" type="button" aria-expanded="false">
+                          <span class="agent-progress-pulse" aria-hidden="true"></span>
+                          <span class="agent-progress-title">
+                            <strong id="agentProgressCurrent">等待 Agent 启动</strong>
+                            <small id="agentProgressMeta">0/7 个 Agent</small>
+                          </span>
+                          <svg><use href="#icon-chevron"></use></svg>
+                        </button>
+                        <div class="agent-progress-list" id="agentProgressList"></div>
+                      </section>
                       <section class="insight-panel chat-insight">
                         <div class="panel-heading">
                           <div>

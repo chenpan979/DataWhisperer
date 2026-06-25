@@ -5,6 +5,7 @@ const state = {
   typeTimer: null,
   processTimer: null,
   processOpen: false,
+  agentProgressOpen: false,
   currentSql: "-- SQL will appear here",
   evaluationTrendChart: null,
   evaluationReport: null,
@@ -71,13 +72,23 @@ const defaultSettings = {
 };
 
 const pendingProcessSteps = [
-  { name: "understand", title: "理解问题", detail: "识别用户想要分析的业务对象和指标。" },
-  { name: "schema", title: "读取数据结构", detail: "读取 MySQL 示例库中的表、字段和关系。" },
-  { name: "metric_retrieval", title: "检索指标口径", detail: "查找 GMV、销售额、客单价等业务定义。" },
-  { name: "generate_sql", title: "生成 SQL", detail: "结合 schema 和指标口径生成只读查询。" },
-  { name: "execute_sql", title: "执行查询", detail: "校验 SQL 安全性并返回结果数据。" },
-  { name: "chart", title: "生成图表", detail: "根据字段类型推荐可视化配置。" },
-  { name: "insight", title: "生成结论", detail: "基于查询结果生成简短业务分析。" },
+  { name: "schema", title: "读取数据结构", detail: "SchemaLinkingAgent 正在读取表、字段、主键和外键。" },
+  { name: "metric_retrieval", title: "检索业务知识", detail: "KnowledgeRetrievalAgent 正在检索指标口径和知识库资料。" },
+  { name: "query_planning", title: "生成查询计划", detail: "QueryPlanningAgent 正在整理 SQL-of-Thought 查询计划。" },
+  { name: "generate_sql", title: "生成 SQL", detail: "SQLGenerationAgent 正在生成只读 SQL。" },
+  { name: "execute_sql", title: "校验并执行", detail: "ValidationExecutionAgent 正在做安全校验、LIMIT 和查询执行。" },
+  { name: "chart", title: "推荐图表", detail: "ChartAgent 正在根据字段和结果推荐图表。" },
+  { name: "insight", title: "生成结论", detail: "InsightAgent 正在总结业务分析结论。" },
+];
+
+const agentPipeline = [
+  { key: "schema", agent: "SchemaLinkingAgent", title: "读取数据结构", traceNames: ["schema"] },
+  { key: "knowledge", agent: "KnowledgeRetrievalAgent", title: "检索指标与知识库", traceNames: ["metric_retrieval", "knowledge_retrieval"] },
+  { key: "planning", agent: "QueryPlanningAgent", title: "生成 SQL-of-Thought 计划", traceNames: ["query_planning"] },
+  { key: "sql", agent: "SQLGenerationAgent", title: "生成或修复 SQL", traceNames: ["generate_sql", "sql_repair"] },
+  { key: "execution", agent: "ValidationExecutionAgent", title: "安全校验与执行查询", traceNames: ["security_policy", "execute_sql"] },
+  { key: "chart", agent: "ChartAgent", title: "推荐可视化图表", traceNames: ["chart"] },
+  { key: "insight", agent: "InsightAgent", title: "生成业务结论", traceNames: ["insight"] },
 ];
 
 const chartTypeLabels = {
@@ -215,6 +226,11 @@ const el = {
   processSummary: document.querySelector("#processSummary"),
   processTimeline: document.querySelector("#processTimeline"),
   toggleProcessButton: document.querySelector("#toggleProcessButton"),
+  agentProgressPanel: document.querySelector("#agentProgressPanel"),
+  agentProgressToggle: document.querySelector("#agentProgressToggle"),
+  agentProgressCurrent: document.querySelector("#agentProgressCurrent"),
+  agentProgressMeta: document.querySelector("#agentProgressMeta"),
+  agentProgressList: document.querySelector("#agentProgressList"),
   chartHost: document.querySelector("#chartHost"),
   chartInteraction: document.querySelector("#chartInteraction"),
   resultTable: document.querySelector("#resultTable"),
@@ -2155,6 +2171,7 @@ function renderTable(columns, rows) {
 }
 
 function renderProcessTimeline(steps) {
+  renderAgentProgress(steps);
   updateProcessSummary(steps);
   if (!steps.length) {
     el.processTimeline.innerHTML = '<li class="timeline-empty">暂无执行过程</li>';
@@ -2206,6 +2223,72 @@ function updateProcessSummary(steps) {
   el.processSummary.className = "process-summary ok";
 }
 
+function renderAgentProgress(steps) {
+  if (!el.agentProgressPanel || !el.agentProgressList) {
+    return;
+  }
+  const stages = agentPipeline.map((stage) => resolveAgentStageStatus(stage, steps));
+  const okCount = stages.filter((stage) => stage.status === "ok").length;
+  const activeStage = stages.find((stage) => stage.status === "active")
+    || stages.find((stage) => stage.status === "retry")
+    || stages.find((stage) => stage.status === "failed")
+    || stages.find((stage) => stage.status === "pending")
+    || stages[stages.length - 1];
+  const complete = okCount === stages.length && stages.length > 0;
+  const failed = stages.some((stage) => stage.status === "failed");
+  const panelStatus = failed ? "failed" : complete ? "ok" : "working";
+
+  el.agentProgressPanel.classList.remove("ok", "working", "failed");
+  el.agentProgressPanel.classList.add(panelStatus);
+  el.agentProgressCurrent.textContent = complete
+    ? "多智能体分析完成"
+    : `${activeStage.agent} · ${activeStage.title}`;
+  el.agentProgressMeta.textContent = `${okCount}/${stages.length} 个 Agent`;
+  el.agentProgressList.innerHTML = stages
+    .map((stage, index) => {
+      const detail = stage.detail || stage.title;
+      return `
+        <div class="agent-step ${escapeHtml(stage.status)}">
+          <span class="agent-step-index">${index + 1}</span>
+          <span class="agent-step-main">
+            <strong>${escapeHtml(stage.agent)}</strong>
+            <small>${escapeHtml(stage.title)}</small>
+          </span>
+          <span class="agent-step-status">${escapeHtml(labelForStatus(stage.status))}</span>
+          <span class="agent-step-detail">${escapeHtml(detail)}</span>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function resolveAgentStageStatus(stage, steps) {
+  const relatedSteps = steps.filter((step) => stage.traceNames.includes(step.name));
+  if (!relatedSteps.length) {
+    return { ...stage, status: "pending", detail: "等待上一个 Agent 完成。" };
+  }
+  const statusPriority = ["failed", "active", "retry", "ok", "pending"];
+  const status = statusPriority.find((item) => relatedSteps.some((step) => step.status === item)) || "pending";
+  const detailStep = [...relatedSteps].reverse().find((step) => step.detail) || relatedSteps[relatedSteps.length - 1];
+  return {
+    ...stage,
+    status: status === "retry" ? "active" : status,
+    detail: detailStep?.detail || stage.title,
+  };
+}
+
+function setAgentProgressOpen(open) {
+  state.agentProgressOpen = open;
+  if (!el.agentProgressPanel || !el.agentProgressToggle) {
+    return;
+  }
+  el.agentProgressPanel.classList.toggle("collapsed", !open);
+  el.agentProgressToggle.setAttribute("aria-expanded", String(open));
+}
+
+function toggleAgentProgress() {
+  setAgentProgressOpen(!state.agentProgressOpen);
+}
 function normalizeTraceSteps(steps) {
   return steps.map((step) => ({
     name: step.name,
@@ -5247,6 +5330,7 @@ function bindEvents() {
   el.copyTableMarkdownButton.addEventListener("click", copyTableMarkdown);
   el.downloadCsvButton.addEventListener("click", downloadResultCsv);
   el.toggleProcessButton.addEventListener("click", toggleProcessPanel);
+  el.agentProgressToggle?.addEventListener("click", toggleAgentProgress);
   el.followupToggle.addEventListener("click", toggleFollowups);
   el.processTimeline.addEventListener("click", (event) => {
     const button = event.target.closest(".timeline-head");
