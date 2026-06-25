@@ -1,7 +1,7 @@
 import pytest
 
-from app.agent import orchestrator as orchestrator_module
-from app.agent.orchestrator import DataAnalysisOrchestrator
+from app.agents import sql_of_thought as orchestrator_module
+from app.agents.sql_of_thought import DataAnalysisOrchestrator
 from app.models.query import TraceStep
 from app.tools.sql_tool import GeneratedSQL
 

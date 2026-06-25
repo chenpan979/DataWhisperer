@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V3.13.13：工作空间知识库检索隔离版本**。
+当前项目已经更新到 **V4.0.0：SQL-of-Thought 多智能体底座版本**。
 
 版本入口：
 
@@ -86,8 +86,9 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.13.11`：RAG 知识库上传文件接入自动切片和 Milvus 同步，文件列表展示同步状态，并支持失败后手动重试。
 - `v3.13.12`：把 RAG 知识库升级为租户/工作空间级产品结构，新增知识库、文档、切片表，并把 Milvus 元数据同步到 tenant/workspace/knowledge_base/document 维度。
 - `v3.13.13`：把上传知识库接入 AI 查数 RAG 检索链路，Milvus 查询强制携带 tenant/workspace/knowledge_base 过滤条件，避免多租户知识串用。
+- `v4.0.0`：引入 SQL-of-Thought 多智能体编排底座，将 AI 查数拆分为 Schema Linking、Knowledge Retrieval、Query Planning、SQL Generation、Validation/Execution、Chart 和 Insight 等 Agent，单库先跑稳，多库路由、MCP 工具和 Agent 评测后续扩展。
 
-项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 开始加入 RAG 业务知识增强，后续会继续扩展 MCP 工具化和多智能体协作。
+项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 加入 RAG 业务知识增强，V4 开始把查数链路升级为 SQL-of-Thought 多智能体架构，后续会继续扩展多库路由、MCP 工具化和 Agent 协作评测。
 
 ## 项目亮点
 
@@ -104,7 +105,8 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - 内置基础 Text-to-SQL 评测集，可快速检查 SQL 安全、关键 SQL 片段和图表推荐是否退化。
 - V3 引入本地指标口径库，支持 GMV、销售额、客单价、订单数、复购率等业务指标检索。
 - SQL 生成和 SQL 修复 prompt 会注入检索到的指标口径，让模型按业务定义生成 SQL。
-- API 返回 `retrieved_metrics`，方便追踪本次问题参考了哪些业务指标定义。
+- 返回 `retrieved_metrics`，用于追踪本次请求检索到的业务指标口径。
+- V4 返回的 `trace_steps` 保持旧协议名称，同时在 detail 中标明对应 Agent，方便前端兼容和后端继续拆分。
 - V3.1 使用混合检索策略：关键词/别名精确匹配 + 本地 n-gram 语义相似度。
 - V3.2 增加指标检索评测集，检查指标召回是否正确、是否误召回禁止指标。
 - V3.3 增加 Milvus 向量数据库检索层，指标 Markdown 仍作为知识源，Milvus 作为可重建索引。
@@ -189,24 +191,18 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 flowchart TD
     U["用户中文问题"] --> API["FastAPI: POST /api/chat/query"]
     API --> O["DataAnalysisOrchestrator"]
-    O --> S["Schema Tool: 读取表结构"]
-    O --> M["Metric Retriever: 检索业务指标口径"]
-    M --> VDB["Milvus: 指标向量索引"]
-    M --> LOCAL["Local Hybrid: 本地兜底检索"]
-    O --> P["PromptRegistry: 读取版本化提示词"]
-    O --> SQL["SQL Tool: 生成并校验 SQL"]
-    O --> RPAIR["SQL Repair: 失败后自动修复"]
-    O --> Q["Query Tool: 执行只读查询"]
-    O --> C["Chart Tool: 推荐图表"]
-    O --> I["Insight Tool: 生成业务结论"]
-    S --> R["统一响应"]
-    M --> SQL
-    P --> SQL
-    SQL --> R
-    RPAIR --> R
-    Q --> R
-    C --> R
-    I --> R
+    O --> A1["SchemaLinkingAgent: 读取并压缩 Schema"]
+    A1 --> A2["KnowledgeRetrievalAgent: 指标 + 工作空间知识库检索"]
+    A2 --> A3["QueryPlanningAgent: 生成 SQL-of-Thought 查询计划"]
+    A3 --> A4["SQLGenerationAgent: 生成只读 SQL"]
+    A4 --> A5["ValidationExecutionAgent: 安全校验 + 执行 + 一次修复"]
+    A5 --> A6["ChartAgent: 推荐 ECharts 图表"]
+    A6 --> A7["InsightAgent: 生成业务结论"]
+    A2 --> VDB["Milvus: 指标/知识向量索引"]
+    A2 --> LOCAL["Local Hybrid: 本地兜底检索"]
+    A4 --> P["PromptRegistry: 版本化 prompt"]
+    A5 --> SAFE["SQL Safety Policy: 只读、LIMIT、超时、轨迹"]
+    A7 --> R["统一响应: SQL / rows / chart / insight / trace"]
     R --> UI["中文 Web 控制台 / API 调用方"]
 ```
 
@@ -219,13 +215,15 @@ flowchart TD
 - 返回 `trace_steps`，方便调试和向面试官解释每一步发生了什么。
 - 返回 `prompt_versions` 和 `repair_count`，用于追踪本次请求使用的提示词版本和 SQL 修复次数。
 - 返回 `retrieved_metrics`，用于追踪本次请求检索到的业务指标口径。
+- V4 返回的 `trace_steps` 保持旧协议名称，同时在 detail 中标明对应 Agent，方便前端兼容和后端继续拆分。
 
 ## 目录结构
 
 ```text
 app/
   api/          FastAPI 路由
-  agent/        Agent 主控编排流程
+  agent/        兼容旧导入路径
+  agents/       SQL-of-Thought 多智能体编排模块
   core/         配置、数据库、大模型客户端
   evals/        Text-to-SQL 评测 runner
   models/       Pydantic 请求/响应模型
@@ -237,6 +235,7 @@ docs/
   v1-release-notes.md   v1 发布说明
   v2-promptops-design.md V2 PromptOps 设计说明
   v3-rag-metrics-design.md V3 RAG 指标口径库设计说明
+  v4-sql-of-thought-agents.md V4 SQL-of-Thought 多智能体设计说明
 evals/
   text_to_sql_cases.json 基础 Text-to-SQL 评测集
   metric_retrieval_cases.json 指标检索评测集
@@ -742,6 +741,7 @@ uvicorn app.main:app --reload --port 8081
 - V3.13.11：RAG 上传文件自动切片并同步 Milvus，失败后可在文件列表手动重试；数据结构上传文件接入 schema 解析仍保留为后续增强。
 - V3.13.12：RAG 知识库升级为多租户产品级结构，默认知识库、文档登记、切片元数据和 Milvus tenant/workspace 元数据全部打通。
 - V3.13.13：RAG 检索侧增加工作空间隔离，AI 查数会用当前租户/工作空间/知识库过滤 Milvus 文档切片。
-- V4：MCP 工具化，把数据库查询、图表生成、导出能力包装成工具。
-- V5：多智能体拆分，引入 Schema Analyst、SQL Engineer、Chart Designer、Report Writer。
-- V6：评测体系增强，增加真实 LLM 评测、SQL 正确率、修复成功率和分析结论质量评估。
+- V4：SQL-of-Thought 多智能体底座，先在单库场景拆分 Schema Linking、知识检索、查询规划、SQL 生成、校验执行、图表和结论 Agent。
+- V4.1：多智能体评测增强，按 Agent 维度观察 SQL 正确率、修复成功率、检索命中率和结论质量。
+- V5：MCP 工具化，把数据库查询、图表生成、导出能力包装成可复用工具。
+- V6：多库路由与更完整的 Agent 协作，支持跨库选择、权限边界和企业级审计。
