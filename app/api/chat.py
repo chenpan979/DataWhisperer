@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import AuthContext, require_auth_context
 from app.api.model_settings import _ensure_default_model_settings
 from app.api.security_policies import build_query_security_policy, ensure_default_security_policy
-from app.agent.orchestrator import DataAnalysisOrchestrator
+from app.agents.orchestrator import DataAnalysisOrchestrator
 from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.llm import LLMClient, get_llm_client

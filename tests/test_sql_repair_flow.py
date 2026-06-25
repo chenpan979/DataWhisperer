@@ -1,7 +1,7 @@
 import pytest
 
-from app.agents import sql_of_thought as orchestrator_module
-from app.agents.sql_of_thought import DataAnalysisOrchestrator
+from app.agents import validation_execution
+from app.agents.orchestrator import DataAnalysisOrchestrator
 from app.models.query import TraceStep
 from app.tools.sql_tool import GeneratedSQL
 
@@ -28,7 +28,7 @@ async def test_orchestrator_repairs_failed_sql_once(monkeypatch: pytest.MonkeyPa
             raise ValueError("Unknown column 'missing_column'")
         return f"{sql}\nLIMIT {max_rows}", ["value"], [{"value": 1}]
 
-    monkeypatch.setattr(orchestrator_module, "execute_safe_query", fake_execute_safe_query)
+    monkeypatch.setattr(validation_execution, "execute_safe_query", fake_execute_safe_query)
 
     orchestrator = DataAnalysisOrchestrator(engine=object(), llm=RepairLLM())  # type: ignore[arg-type]
     trace: list[TraceStep] = []

@@ -1,9 +1,9 @@
-"""V4 多智能体编排模块。
+"""DataWhisperer V4 多智能体模块。
 
-这里放的是 DataWhisperer 的 Agent Harness。
-V4.0 先做单库 Text-to-SQL 多智能体拆分，后续再扩展多库路由、MCP 工具和更完整的评测闭环。
+`app.agents` 是当前真实使用的多智能体实现目录；`app.agent` 只保留
+历史兼容入口。业务入口优先从这里导入 Orchestrator 或具体 Agent。
 """
 
-from app.agents.sql_of_thought import DataAnalysisOrchestrator
+from app.agents.orchestrator import DataAnalysisOrchestrator
 
 __all__ = ["DataAnalysisOrchestrator"]

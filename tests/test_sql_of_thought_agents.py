@@ -1,6 +1,6 @@
 import pytest
 
-from app.agents import sql_of_thought
+from app.agents import schema_linking, sql_of_thought, validation_execution
 from app.models.query import QueryRequest
 
 
@@ -85,8 +85,8 @@ async def test_sql_of_thought_plan_is_injected_into_sql_generation(
             [{"product_name": "Aurora Laptop", "stock_status": "normal"}],
         )
 
-    monkeypatch.setattr(sql_of_thought, "build_schema_overview", fake_schema_overview)
-    monkeypatch.setattr(sql_of_thought, "execute_safe_query", fake_execute_safe_query)
+    monkeypatch.setattr(schema_linking, "build_schema_overview", fake_schema_overview)
+    monkeypatch.setattr(validation_execution, "execute_safe_query", fake_execute_safe_query)
 
     llm = CapturingLLM()
     orchestrator = sql_of_thought.DataAnalysisOrchestrator(engine=object(), llm=llm)  # type: ignore[arg-type]
