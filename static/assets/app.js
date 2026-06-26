@@ -1264,7 +1264,6 @@ async function runAnalysis() {
     });
     state.lastResponse = data;
     await renderResponse(data);
-    setRunState("完成", "ok");
   } catch (error) {
     el.assistantResultMessage.classList.remove("is-loading");
     setRunState("失败", "error");
@@ -1296,6 +1295,7 @@ async function renderResponse(data) {
   renderChart(data.chart, data.rows);
   typeInsight(data.insight || "暂无分析结论。");
   renderFollowups(generateFollowupQuestions(data));
+  setRunState("完成", "ok");
   await saveConversationTurn(data);
   scrollChatToBottom();
 }
@@ -1330,6 +1330,7 @@ function resetAnalysisResult(question) {
   closeResultDetails();
   renderTable([], []);
   renderChartSkeleton();
+  setAgentProgressOpen(false);
   scrollChatToBottom();
 }
 
@@ -1355,15 +1356,7 @@ function archiveCurrentTurn() {
   const archivedAssistant = cloneAsHistoryNode(el.assistantResultMessage);
 
   hydrateHistorySnapshotNode(archivedAssistant, state.lastResponse || {}, { allowLiveChartSnapshot: true });
-
-  archivedAssistant.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
-  archivedAssistant.querySelectorAll(".result-actions, .code-actions").forEach((node) => {
-    node.hidden = true;
-  });
-  archivedAssistant.querySelectorAll(".result-actions button, .code-actions button").forEach((button) => {
-    button.disabled = true;
-    button.setAttribute("aria-disabled", "true");
-  });
+  finalizeAssistantMessageForHistory(archivedAssistant);
 
   el.chatThread.insertBefore(archivedUser, el.userMessage);
   el.chatThread.insertBefore(archivedAssistant, el.userMessage);
@@ -1391,12 +1384,10 @@ function createAssistantSnapshotHtml(data) {
   clone.hidden = false;
   clone.removeAttribute("id");
   clone.classList.add("archived-turn", "conversation-history-turn", "snapshot-history-turn");
-  clone.querySelectorAll(".analysis-thinking").forEach((node) => node.remove());
 
   const insight = clone.querySelector("#insightText");
   if (insight) {
     insight.textContent = data.insight || insight.textContent;
-    insight.classList.remove("streaming");
   }
 
   const tablePanel = clone.querySelector("#tablePanel");
@@ -1420,12 +1411,42 @@ function createAssistantSnapshotHtml(data) {
     }
   }
 
-  clone.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
-  clone.querySelectorAll(".result-actions, .code-actions").forEach((node) => {
-    node.hidden = true;
-  });
+  finalizeAssistantMessageForHistory(clone);
   clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
   return clone.outerHTML;
+}
+
+function finalizeAssistantMessageForHistory(root) {
+  if (!root) {
+    return;
+  }
+
+  root.hidden = false;
+  root.classList.remove("is-loading");
+  root.querySelectorAll(".analysis-thinking").forEach((node) => node.remove());
+  root.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
+
+  const runState = root.querySelector("#runState, .message-author .state-label");
+  if (runState) {
+    runState.textContent = "完成";
+    runState.className = "state-label ok";
+  }
+
+  root.querySelectorAll(".agent-progress-panel").forEach((panel) => {
+    panel.classList.add("collapsed");
+    panel.classList.remove("working", "failed");
+    panel.classList.add("ok");
+  });
+  root.querySelectorAll(".agent-progress-toggle").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+  root.querySelectorAll(".result-actions, .code-actions").forEach((node) => {
+    node.hidden = true;
+  });
+  root.querySelectorAll(".result-actions button, .code-actions button").forEach((button) => {
+    button.disabled = true;
+    button.setAttribute("aria-disabled", "true");
+  });
 }
 
 function cloneAsHistoryNode(source) {
@@ -1535,8 +1556,7 @@ function createHistoryAssistantSnapshotNode(turn) {
 
   article.hidden = false;
   article.classList.add("archived-turn", "conversation-history-turn", "snapshot-history-turn");
-  article.querySelectorAll(".streaming").forEach((node) => node.classList.remove("streaming"));
-  article.querySelectorAll(".analysis-thinking").forEach((node) => node.remove());
+  finalizeAssistantMessageForHistory(article);
   hydrateHistorySnapshotNode(article, turn);
   return article;
 }
@@ -2279,15 +2299,28 @@ function resolveAgentStageStatus(stage, steps) {
 
 function setAgentProgressOpen(open) {
   state.agentProgressOpen = open;
-  if (!el.agentProgressPanel || !el.agentProgressToggle) {
+  setAgentProgressPanelOpen(el.agentProgressPanel, el.agentProgressToggle, open);
+}
+
+function setAgentProgressPanelOpen(panel, button, open) {
+  if (!panel || !button) {
     return;
   }
-  el.agentProgressPanel.classList.toggle("collapsed", !open);
-  el.agentProgressToggle.setAttribute("aria-expanded", String(open));
+  panel.classList.toggle("collapsed", !open);
+  button.setAttribute("aria-expanded", String(open));
 }
 
 function toggleAgentProgress() {
   setAgentProgressOpen(!state.agentProgressOpen);
+}
+
+function toggleAgentProgressFromButton(button) {
+  const panel = button?.closest(".agent-progress-panel");
+  const nextOpen = button?.getAttribute("aria-expanded") !== "true";
+  setAgentProgressPanelOpen(panel, button, nextOpen);
+  if (button === el.agentProgressToggle) {
+    state.agentProgressOpen = nextOpen;
+  }
 }
 function normalizeTraceSteps(steps) {
   return steps.map((step) => ({
@@ -5330,7 +5363,6 @@ function bindEvents() {
   el.copyTableMarkdownButton.addEventListener("click", copyTableMarkdown);
   el.downloadCsvButton.addEventListener("click", downloadResultCsv);
   el.toggleProcessButton.addEventListener("click", toggleProcessPanel);
-  el.agentProgressToggle?.addEventListener("click", toggleAgentProgress);
   el.followupToggle.addEventListener("click", toggleFollowups);
   el.processTimeline.addEventListener("click", (event) => {
     const button = event.target.closest(".timeline-head");
@@ -5348,6 +5380,12 @@ function bindEvents() {
     el.questionInput.focus();
   });
   el.chatThread?.addEventListener("click", (event) => {
+    const agentButton = event.target.closest(".agent-progress-toggle");
+    if (agentButton) {
+      toggleAgentProgressFromButton(agentButton);
+      return;
+    }
+
     const detailButton = event.target.closest(".conversation-history-turn .detail-toggle");
     if (detailButton) {
       toggleHistoryResultDetail(detailButton);

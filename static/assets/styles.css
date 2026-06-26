@@ -4745,14 +4745,15 @@ td {
   border-top: 1px solid #e7f1ee;
   display: grid;
   gap: 8px;
-  max-height: 360px;
-  overflow: hidden;
+  max-height: 820px;
+  overflow: visible;
   padding: 12px;
   transition: max-height 220ms var(--ease), padding 180ms var(--ease);
 }
 #analysisView .agent-progress-panel.collapsed .agent-progress-list {
   border-top: 0;
   max-height: 0;
+  overflow: hidden;
   padding-bottom: 0;
   padding-top: 0;
 }
@@ -4762,9 +4763,9 @@ td {
   border: 1px solid #e8f1ee;
   border-radius: 12px;
   display: grid;
-  gap: 10px;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  padding: 10px;
+  gap: 8px 10px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  padding: 9px 10px;
 }
 #analysisView .agent-step-index {
   align-items: center;
@@ -4774,9 +4775,9 @@ td {
   display: inline-flex;
   font-size: 12px;
   font-weight: 800;
-  height: 28px;
+  height: 26px;
   justify-content: center;
-  width: 28px;
+  width: 26px;
 }
 #analysisView .agent-step-main {
   display: grid;
@@ -4804,7 +4805,7 @@ td {
 }
 #analysisView .agent-step-detail {
   grid-column: 2 / 4;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 #analysisView .agent-step.ok .agent-step-index,
 #analysisView .agent-step.ok .agent-step-status {
