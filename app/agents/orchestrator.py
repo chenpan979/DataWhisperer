@@ -17,7 +17,7 @@ from app.core.llm import LLMClient
 from app.models.query import QueryRequest, QueryResponse
 from app.rag.document_retriever import RagDocumentRetriever, RagKnowledgeScope
 from app.tools.security_policy import QuerySecurityPolicy, default_query_security_policy
-from app.tools.sql_tool import GeneratedSQL
+from app.agents.sql_generation import GeneratedSQL
 
 
 class DataAnalysisOrchestrator:

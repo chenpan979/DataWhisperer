@@ -8,10 +8,12 @@ class EvaluationRunRequest(BaseModel):
 
     suites 为空时表示运行全部套件。dataset_file_id 为空时使用内置评测集；
     传入上传文件 id 时，Text-to-SQL 套件会使用该文件中的自定义用例。
+    runner_mode 用来区分离线快速回归和真实多智能体评测。
     """
 
     suites: list[str] = Field(default_factory=list, description="Evaluation suite ids to run.")
     dataset_file_id: str | None = Field(default=None, description="Uploaded evaluation dataset file id.")
+    runner_mode: str = Field(default="offline", description="Text-to-SQL runner mode: offline or agent.")
 
 
 class EvaluationKpi(BaseModel):
@@ -22,6 +24,16 @@ class EvaluationKpi(BaseModel):
     value: str
     description: str
     status: str = "ok"
+
+
+class EvaluationBucketSummary(BaseModel):
+    """难度、RAG 或消融维度下的分桶统计。"""
+
+    name: str
+    total: int
+    passed: int
+    failed: int
+    pass_rate: float
 
 
 class EvaluationSuiteSummary(BaseModel):
@@ -36,6 +48,9 @@ class EvaluationSuiteSummary(BaseModel):
     pass_rate: float
     duration_ms: int
     status: str
+    difficulty_breakdown: list[EvaluationBucketSummary] = Field(default_factory=list)
+    rag_breakdown: list[EvaluationBucketSummary] = Field(default_factory=list)
+    ablation_breakdown: list[EvaluationBucketSummary] = Field(default_factory=list)
 
 
 class EvaluationCaseResult(BaseModel):
@@ -52,6 +67,9 @@ class EvaluationCaseResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
     generated_sql: str = ""
     tags: list[str] = Field(default_factory=list)
+    difficulty: str = ""
+    requires_rag: bool = False
+    ablation_tags: list[str] = Field(default_factory=list)
     duration_ms: int = 0
 
 
@@ -116,6 +134,7 @@ class EvaluationRunResponse(BaseModel):
     duration_ms: int
     dataset_file_id: str = ""
     dataset_name: str = "内置评测集"
+    runner_mode: str = "offline"
     kpis: list[EvaluationKpi]
     suites: list[EvaluationSuiteSummary]
     cases: list[EvaluationCaseResult]

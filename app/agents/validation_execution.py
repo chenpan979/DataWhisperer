@@ -3,9 +3,11 @@ from typing import Any
 from sqlalchemy.engine import Engine
 
 from app.agents.context import DataAnalysisAgentState
+from app.agents.sql_correction_plan import generate_sql_correction_plan
+from app.agents.sql_repair import repair_sql
 from app.core.llm import LLMClient
 from app.tools.query_tool import execute_safe_query
-from app.tools.sql_tool import GeneratedSQL, repair_sql
+from app.agents.sql_generation import GeneratedSQL
 
 
 class ValidationExecutionAgent:
@@ -88,12 +90,30 @@ async def execute_with_optional_repair(
                 detail=f"CorrectionAgent 收到执行失败原因：{error_message}",
             )
         )
+        correction_plan = await generate_sql_correction_plan(
+            question=question,
+            schema_prompt=schema_prompt,
+            metric_context=retrieval_context,
+            failed_sql=generated.sql,
+            error_message=error_message,
+            llm=llm,
+        )
+        if correction_plan.prompt_id and correction_plan.prompt_version:
+            prompt_versions[correction_plan.prompt_id] = correction_plan.prompt_version
+        trace.append(
+            _trace_step(
+                name="sql_correction_plan",
+                status="ok",
+                detail=f"CorrectionPlanAgent: {correction_plan.to_trace_detail()}",
+            )
+        )
         repaired = await repair_sql(
             question=question,
             schema_prompt=schema_prompt,
             metric_context=retrieval_context,
             failed_sql=generated.sql,
             error_message=error_message,
+            correction_plan=correction_plan,
             llm=llm,
         )
         if not repaired:

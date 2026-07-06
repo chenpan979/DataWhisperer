@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V4.1.2：多智能体执行进度可视化版本**。
+当前项目已经更新到 **V4.2.3：真实 Agent 评测与进度可视化版本**。
 
 版本入口：
 
@@ -90,8 +90,12 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v4.1.0`：系统设置里的 Agent 模型绑定正式接入 SQL-of-Thought 编排器，SQL 生成、SQL 修复和分析总结可以按工作空间 Profile 独立路由，trace 会显示实际使用的模型绑定。
 - `v4.1.1`：整理多智能体代码结构，将 Schema Linking、知识检索、查询规划、SQL 生成、校验执行、图表和结论 Agent 拆成独立文件，`app.agent` 仅保留历史兼容入口。
 - `v4.1.2`：升级 AI 查数等待态，新增多智能体执行进度下拉卡片，实时展示当前执行到哪个 Agent，完成后仍可展开查看 Agent 链路。
+- `v4.2.0`：引入 SQL-of-Thought 引导式纠错，将 SQL 修复拆成错误分类、结构化修复计划和受计划约束的 SQL 重写。
+- `v4.2.1`：重建 Text-to-SQL 评测数据集，离线集扩展到 70 条稳定回归用例，新增 18 表真实 Agent 核心集，并生成 100/240/360 条产品级 benchmark，支持后续 RAG、Agent 和消融实验。
+- `v4.2.2`：测试集管理新增内置 benchmark 同步能力，页面刷新时会把仓库内最新 70/18/100/240/360 条评测集同步到已上传测试集列表，同时保留用户自定义测试集。
+- `v4.2.3`：评测中心新增运行进度面板，展示当前阶段、进度条、已耗时和评测数据源，避免真实 Agent 评测耗时较长时用户误以为页面卡住。
 
-项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充大模型工程化能力，V3 加入 RAG 业务知识增强，V4 开始把查数链路升级为 SQL-of-Thought 多智能体架构，V4.1 把系统设置中的 Agent 模型绑定接入运行时，V4.1.1 进一步把多智能体代码拆成一 Agent 一文件，V4.1.2 把多智能体执行过程显性化展示到对话界面，后续会继续扩展多库路由、MCP 工具化和 Agent 协作评测。
+项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充 PromptOps 和 SQL 修复，V3 把产品化界面、RAG 知识库、多租户产品库、系统设置和会话持久化补齐，V4 开始升级为 SQL-of-Thought 多智能体架构。当前 V4.2.3 已经支持真实 Agent 评测、内置 70/18/100/240/360 条测试集同步和评测运行进度展示，后续会继续做 Agent 消融实验、多库路由和 MCP 工具化。
 
 ## 项目亮点
 
@@ -193,80 +197,135 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 
 ## 架构概览
 
+当前 DataWhisperer 已经从单个 “LLM 生成 SQL” 接口，升级为 **多租户产品库 + 工作空间默认数据源 + RAG 知识库 + SQL-of-Thought 多智能体 + 评测中心** 的完整闭环。
+
+### 产品总架构
+
+```mermaid
+flowchart LR
+    USER["业务用户 / SQL 人员"] --> FE["中文 Web 控制台"]
+    FE --> AUTH["登录 / 注册 / 找回密码"]
+    FE --> CHAT["AI 查数对话"]
+    FE --> SCHEMA["数据结构 / 3D 关系图谱"]
+    FE --> RAGUI["RAG 知识库"]
+    FE --> EVALUI["测试集管理 / 评测中心"]
+    FE --> SETTINGS["系统设置"]
+
+    AUTH --> API["FastAPI API 层"]
+    CHAT --> API
+    SCHEMA --> API
+    RAGUI --> API
+    EVALUI --> API
+    SETTINGS --> API
+
+    API --> PRODUCTDB[("产品管理库 datawhisperer_product")]
+    API --> BIZDB[("业务示例库 datawhisperer_demo")]
+    API --> MILVUS[("Milvus 向量库")]
+    API --> FILES["上传文件与评测集存储"]
+    API --> LLM["DashScope / OpenAI-compatible LLM"]
+
+    PRODUCTDB --> TENANT["租户 / 用户 / 工作空间"]
+    PRODUCTDB --> CONFIG["数据源 / 模型 / 安全策略"]
+    PRODUCTDB --> SNAPSHOT["Schema 快照 / 会话快照 / 运行记录"]
+    PRODUCTDB --> KBMETA["知识库 / 文档 / 切片元数据"]
+```
+
+### SQL-of-Thought 多智能体链路
+
 ```mermaid
 flowchart TD
-    U["用户中文问题"] --> API["FastAPI: POST /api/chat/query"]
-    API --> O["DataAnalysisOrchestrator"]
-    API --> MR["AgentModelRouter: 工作空间模型绑定"]
-    O --> A1["SchemaLinkingAgent: 读取并压缩 Schema"]
-    A1 --> A2["KnowledgeRetrievalAgent: 指标 + 工作空间知识库检索"]
-    A2 --> A3["QueryPlanningAgent: 生成 SQL-of-Thought 查询计划"]
-    A3 --> A4["SQLGenerationAgent: 生成只读 SQL"]
-    A4 --> A5["ValidationExecutionAgent: 安全校验 + 执行 + 一次修复"]
-    A5 --> A6["ChartAgent: 推荐 ECharts 图表"]
-    A6 --> A7["InsightAgent: 生成业务结论"]
-    A2 --> VDB["Milvus: 指标/知识向量索引"]
-    A2 --> LOCAL["Local Hybrid: 本地兜底检索"]
-    A4 --> P["PromptRegistry: 版本化 prompt"]
-    MR --> A4
-    MR --> A7
-    A5 --> SAFE["SQL Safety Policy: 只读、LIMIT、超时、轨迹"]
-    A7 --> R["统一响应: SQL / rows / chart / insight / trace"]
-    R --> UI["中文 Web 控制台 / API 调用方"]
+    Q["用户自然语言问题"] --> ORCH["DataAnalysisOrchestrator"]
+    ORCH --> S1["SchemaLinkingAgent<br/>读取表、字段、主键、外键"]
+    S1 --> S2["KnowledgeRetrievalAgent<br/>检索指标口径和工作空间知识库"]
+    S2 --> S3["QueryPlanningAgent<br/>生成 SQL-of-Thought 查询计划"]
+    S3 --> S4["SQLGenerationAgent<br/>生成只读 SQL"]
+    S4 --> S5["SQLCorrectionPlanAgent<br/>错误分类与结构化修复计划"]
+    S5 --> S6["SQLRepairAgent<br/>按计划重写 SQL"]
+    S6 --> S7["ValidationExecutionAgent<br/>安全校验、LIMIT、执行查询"]
+    S7 --> S8["ChartAgent<br/>推荐 ECharts 图表"]
+    S8 --> S9["InsightAgent<br/>生成业务结论"]
+    S9 --> R["统一回答<br/>SQL / 表格 / 图表 / 结论 / Agent 轨迹"]
+
+    ROUTER["AgentModelRouter<br/>工作空间 Agent 模型绑定"] --> S4
+    ROUTER --> S5
+    ROUTER --> S6
+    ROUTER --> S9
+    POLICY["SQL 安全策略<br/>只读、LIMIT、超时、轨迹"] --> S7
+    MILVUS["Milvus + 本地兜底检索"] --> S2
+```
+
+### 评测与数据集链路
+
+```mermaid
+flowchart LR
+    BUILTIN["仓库内置评测集<br/>70 / 18 / 100 / 240 / 360"] --> SYNC["POST /api/evaluations/datasets/sync-builtins"]
+    UPLOAD["用户上传 JSON / JSONL / CSV / TXT"] --> DATASETS["测试集管理"]
+    SYNC --> DATASETS
+    DATASETS --> RUN["POST /api/evaluations/run"]
+    RUN --> OFFLINE["offline runner<br/>稳定回归，不调真实模型"]
+    RUN --> AGENT["agent runner<br/>真实 SQL-of-Thought Agent 链路"]
+    AGENT --> KPIS["通过率 / SQL 质量 / 安全边界 / RAG 命中率"]
+    OFFLINE --> KPIS
+    KPIS --> UI["评测中心<br/>进度面板、趋势、用例明细、错误案例"]
 ```
 
 核心设计思想：
 
 - API 层保持轻量，只负责请求、响应和异常转换。
-- Orchestrator 负责编排完整 Agent 流程。
-- Tools 负责具体能力，后续可以平滑升级成 MCP 工具。
-- Prompt 不是安全边界，SQL 安全必须由服务端代码兜底。
-- 返回 `trace_steps`，方便调试和向面试官解释每一步发生了什么。
-- 返回 `prompt_versions` 和 `repair_count`，用于追踪本次请求使用的提示词版本和 SQL 修复次数。
-- 返回 `retrieved_metrics`，用于追踪本次请求检索到的业务指标口径。
-- V4 返回的 `trace_steps` 保持旧协议名称，同时在 detail 中标明对应 Agent，方便前端兼容和后端继续拆分。
-- V4.1 将系统设置里的 Agent 模型绑定接入运行时，SQL 生成、SQL 修复和分析总结可按 Profile 独立切换模型。
-- V4.1.1 将多智能体实现拆成独立模块，`app/agents` 是真实运行目录，`app/agent` 只是旧导入兼容层。
-- V4.1.2 在对话结果顶部新增 Agent 进度下拉，用户可以看到当前执行到 SchemaLinkingAgent、SQLGenerationAgent、InsightAgent 等哪一步。
+- 产品管理库负责租户、用户、工作空间、数据源、模型、知识库、会话和评测元数据。
+- Orchestrator 负责编排 SQL-of-Thought 多智能体链路，`app/agents` 是真实运行目录，`app/agent` 只是历史兼容入口。
+- RAG 检索强制携带 tenant、workspace、knowledge_base 过滤条件，避免多租户知识串用。
+- Prompt 不是安全边界，SQL 安全必须由服务端策略、SQL 校验和执行层兜底。
+- 返回 `trace_steps`、`prompt_versions`、`retrieved_metrics`、`retrieved_knowledge` 和 `repair_count`，方便调试、评测和面试讲解。
+- 评测中心既支持不调用大模型的离线回归，也支持真实 Agent runner，便于后续做 RAG/无 RAG、修复/无修复、多 Agent/单 Agent 的消融实验。
 
 ## 目录结构
 
 ```text
 app/
-  api/          FastAPI 路由
-  agent/        兼容旧导入路径
-  agents/       SQL-of-Thought 多智能体编排模块
-  core/         配置、数据库、大模型客户端
-  evals/        Text-to-SQL 评测 runner
-  models/       Pydantic 请求/响应模型
-  rag/          指标口径检索、向量化、Milvus 同步工具
-  tools/        Schema、SQL、查询、图表、分析工具
+  api/             FastAPI 路由：认证、查数、Schema、文件、评测、系统设置
+  agent/           兼容旧导入路径
+  agents/          SQL-of-Thought 多智能体：一 Agent 一文件
+  core/            配置、数据库、大模型客户端、产品库连接
+  evals/           Text-to-SQL 离线 runner 与真实 Agent runner
+  models/          Pydantic 请求/响应模型
+  rag/             指标口径检索、知识库切片、Milvus 同步与检索
+  repositories/    产品管理库 Repository 层
+  tools/           Schema、SQL、安全校验、查询执行、图表、分析工具
 docs/
-  architecture.md       架构说明
-  interview-guide.md    面试讲解稿
-  v1-release-notes.md   v1 发布说明
-  v2-promptops-design.md V2 PromptOps 设计说明
-  v3-rag-metrics-design.md V3 RAG 指标口径库设计说明
-  v4-sql-of-thought-agents.md V4 SQL-of-Thought 多智能体设计说明
+  architecture.md                 架构说明
+  interview-guide.md              面试讲解稿
+  product-data-model-v3.13.md     产品数据模型与 E-R 图
+  v2-promptops-design.md          V2 PromptOps 设计说明
+  v3-rag-metrics-design.md        V3 RAG 指标口径库设计说明
+  v4-sql-of-thought-agents.md     V4 SQL-of-Thought 多智能体设计说明
 evals/
-  text_to_sql_cases.json 基础 Text-to-SQL 评测集
-  metric_retrieval_cases.json 指标检索评测集
+  text_to_sql_cases.json                 70 条离线稳定 Text-to-SQL 回归集
+  text_to_sql_18_table_cases.jsonl       18 表真实 Agent 核心评测集
+  text_to_sql_upload_100_cases.jsonl     100 条上传演示评测集
+  text_to_sql_product_240_cases.jsonl    240 条产品级评测集
+  text_to_sql_product_360_cases.jsonl    360 条产品级大样本 benchmark
+  metric_retrieval_cases.json            指标检索评测集
 knowledge/
-  metrics/              GMV、销售额、客单价、订单数、复购率等指标口径
+  metrics/         GMV、销售额、客单价、订单数、复购率等指标口径
 prompts/
   sql_generation/       SQL 生成提示词模板
   sql_repair/           SQL 修复提示词模板
   insight_summary/      分析总结提示词模板
   chart_recommendation/ 图表推荐提示词模板
 scripts/
-  mysql_sample.sql      示例电商销售数据库
+  mysql_sample.sql                     示例业务库，当前扩展到 18 张表
+  init_product_schema.sql              产品管理库初始化脚本
+  upgrade_product_schema_*.sql         非破坏式升级脚本
+  regenerate_eval_datasets.py          评测集生成脚本
 static/
-  index.html            中文控制台页面
+  index.html              前端入口
+  assets/                 业务 JS、CSS 和静态资源
+  partials/               页面骨架、登录页、应用壳拆分模板
 storage/
-  schema_files/          数据结构资料上传目录，已加入 .gitignore
-  rag_knowledge/         RAG 知识库资料上传目录，已加入 .gitignore
-tests/
-  单元测试和接口契约测试
+  schema_files/           数据结构资料上传目录，已加入 .gitignore
+  rag_files/              RAG 资料上传目录，已加入 .gitignore
+  evaluation_datasets/    测试集管理上传与内置 benchmark 同步目录
 ```
 
 ## 快速启动
@@ -542,36 +601,37 @@ DELETE /api/files/rag/{file_id}
 
 ### `POST /api/evaluations/run`
 
-V3.7 新增评测中心接口，用于运行内置离线评测套件，不调用真实大模型，适合本地演示和回归检查。
+评测中心运行接口。当前既能跑轻量离线回归，也能跑真实 SQL-of-Thought Agent 链路。
 
-当前内置套件：
+请求示例：
 
-- `text_to_sql`：验证典型业务问题是否生成符合规则的 SQL 和图表类型。
-- `sql_safety`：验证服务端 SQL 安全边界是否能拦截 DROP、DELETE、多语句等风险。
-- `metric_retrieval`：验证指标口径/RAG 检索是否命中正确业务定义。
+```json
+{
+  "dataset_file_id": "上传或内置测试集 id",
+  "runner_mode": "agent"
+}
+```
 
-接口返回 KPI、套件汇总、用例明细、版本质量快照、质量趋势、问题分布、最近任务和模型对比数据，前端“评测中心”页面会直接消费这个接口。
+`runner_mode` 支持：
+
+- `offline`：不调用真实大模型，适合本地快速回归、检查 SQL 安全规则和前端展示链路。
+- `agent`：调用真实 `DataAnalysisOrchestrator`，走 SchemaLinking、KnowledgeRetrieval、QueryPlanning、SQLGeneration、SQLCorrectionPlan、SQLRepair、ValidationExecution、Chart、Insight 等 Agent，适合观察真实模型效果。
+
+接口返回 KPI、套件汇总、用例明细、版本质量快照、质量趋势、问题分布、最近任务、模型对比和错误案例。前端评测中心会在请求等待期间展示运行进度面板，避免真实 Agent 评测耗时较长时用户误以为页面卡住。
 
 ### 评测测试集管理接口
 
-V3.7.2 新增测试集文件管理接口，用于上传自定义离线评测集。当前版本先完成文件管理和预览，后续可以将这些文件解析成真实评测用例并接入评测 runner。
+测试集管理用于上传、预览、删除自定义评测集，也会自动同步仓库内置 benchmark，方便页面里直接选择真实产品级测试集。
 
 ```text
 GET    /api/evaluations/datasets
 POST   /api/evaluations/datasets
+POST   /api/evaluations/datasets/sync-builtins
 GET    /api/evaluations/datasets/{file_id}/preview
 DELETE /api/evaluations/datasets/{file_id}
 ```
 
-支持格式：`.json`、`.jsonl`、`.csv`、`.yaml`、`.yml`、`.txt`。推荐每条用例包含 `question`、`expected_sql_contains` 或 `expected_metrics` 等字段。
-
-V3.8.6 起，评测中心可以选择测试集管理中上传的文件运行自定义 Text-to-SQL 回归评测。`POST /api/evaluations/run` 支持传入：
-
-```json
-{
-  "dataset_file_id": "上传文件 id"
-}
-```
+支持格式：`.json`、`.jsonl`、`.csv`、`.yaml`、`.yml`、`.txt`。推荐每条用例包含 `question`、`difficulty`、`expected_sql_contains`、`forbidden_sql_contains`、`expected_columns`、`expected_chart_type` 和 `tags` 等字段。
 
 推荐测试集字段：
 
@@ -579,6 +639,7 @@ V3.8.6 起，评测中心可以选择测试集管理中上传的文件运行自�
 {
   "id": "case_region_orders",
   "question": "查询各地区订单数量",
+  "difficulty": "simple",
   "expected_sql_contains": ["orders", "regions", "COUNT"],
   "forbidden_sql_contains": ["DELETE", "DROP"],
   "expected_columns": ["region_name", "order_count"],
@@ -587,15 +648,17 @@ V3.8.6 起，评测中心可以选择测试集管理中上传的文件运行自�
 }
 ```
 
-也支持 JSON 数组、JSONL、CSV 和 TXT。TXT 会按“一行一个问题”运行基础生成评测。
-
-V3.8.7 新增可直接上传演示的 100 条 JSONL 样例：
+当前内置评测集由 `scripts/regenerate_eval_datasets.py` 统一生成，覆盖 18 张业务表中的地区、客户分层、商品品类、供应商、仓库、渠道、活动、优惠券、订单、库存、支付、物流、退货、评价和客服工单等场景：
 
 ```text
+evals/text_to_sql_cases.json
+evals/text_to_sql_18_table_cases.jsonl
 evals/text_to_sql_upload_100_cases.jsonl
+evals/text_to_sql_product_240_cases.jsonl
+evals/text_to_sql_product_360_cases.jsonl
 ```
 
-这份样例覆盖最近 6 个月销售趋势、品类销售额占比、地区客单价、商品销售额下滑、地区订单数量、华东销量 Top 商品和行业客户数量等场景。可以在“测试集管理”页面上传，然后在“评测中心”的“评测数据源”中选择该文件运行。
+这些文件会通过 `sync-builtins` 同步到“已上传测试集”列表中，再在“评测中心”的“评测数据源”里选择运行。后续做消融实验时，可以基于同一批数据对比有 RAG / 无 RAG、有 SQL 修复 / 无 SQL 修复、多智能体 / 单链路的差异。
 
 ## 示例问题
 
@@ -636,51 +699,35 @@ DataWhisperer 第一阶段只允许只读分析查询。
 ```powershell
 pytest
 ruff check .
+node --check static\assets\app.js
+node --check static\assets\bootstrap.js
 ```
 
-当前测试覆盖：
+当前测试重点覆盖：
 
-- SQL 安全校验
-- 图表推荐规则
-- 示例问题接口
-- API 路由契约
-- PromptRegistry 提示词模板渲染
-- SQL 自动修复链路
-- Text-to-SQL 基础评测集
-- RAG 指标口径检索
-- 指标检索评测集
-- V3.4 DashScope embedding 客户端和 hashing 本地兜底
-- Milvus 指标检索命中与本地检索兜底
-- Milvus 指标文档同步构造
-- V3.5 文件上传、预览、删除和 API 路由契约
-- V3.7 评测中心 API、Text-to-SQL 评测、SQL 安全评测和指标检索评测
+- SQL 安全校验和工作空间级安全策略。
+- Schema 读取、Schema 快照同步和 3D 关系图谱数据接口。
+- PromptRegistry 提示词模板渲染。
+- SQL-of-Thought 多智能体链路和引导式 SQL 纠错。
+- RAG 指标口径检索、Milvus 同步、本地兜底和多租户知识库过滤。
+- 登录、用户偏好、模型配置、数据源配置等产品库 API 契约。
+- AI 查数会话持久化、完整回答快照和历史 ECharts 恢复。
+- 评测中心 API、内置 benchmark 同步、离线 runner 和真实 Agent runner。
+- Text-to-SQL 70/18/100/240/360 条评测集结构校验。
 
-运行基础评测：
+常用定向验证：
 
 ```powershell
+pytest tests/test_text_to_sql_evals.py tests/test_evaluations_api.py tests/test_api_contract.py tests/test_sql_of_thought_agents.py -q
 python -m app.evals.text_to_sql
-```
-
-运行指标检索评测：
-
-```powershell
 python -m app.evals.metric_retrieval
-```
-
-当前评测结果：
-
-```text
-total: 5
-passed: 5
-failed: 0
-pass_rate: 1.0
 ```
 
 ## 面试讲法
 
 可以用下面这段作为 1 分钟项目介绍：
 
-> DataWhisperer 是我做的一个 Text-to-SQL 数据分析智能体。它面向没有 SQL 能力的业务用户，用户输入中文问题后，系统会读取 MySQL 表结构，并检索 GMV、客单价、复购率等业务指标口径，再调用大模型生成查询 SQL。服务端安全层只允许只读查询，SQL 失败时最多自动修复一次，最后返回表格、图表配置和业务分析结论。V2 引入 PromptOps 和 SQL 自修复，V3 引入 RAG 指标口径库，V3.4 使用 DashScope text-embedding-v4 和 Milvus 做语义检索，V3.5 将前端升级为三工作区控制台，V3.6 增强分析体验，V3.7 增加模型评测中心和模型策略对比，V3.8 增强结果导出、SQL 审阅和自定义测试集评测能力，使系统从“能跑通”升级为“可治理、可追踪、可评测、能理解业务指标、具备向量检索基础设施和产品化交互体验”的大模型工程项目。
+> DataWhisperer 是我做的一个面向业务人员的自然语言数据分析智能体。用户用中文提问后，系统会读取当前工作空间默认 MySQL 数据源的 Schema，检索多租户隔离的 RAG 知识库，再通过 SQL-of-Thought 多智能体链路完成表结构理解、知识检索、查询规划、SQL 生成、引导式 SQL 纠错、安全执行、图表推荐和业务总结。V3 已经补齐登录、多租户产品库、系统设置、会话持久化、3D Schema 图谱和知识库上传同步；V4 把查数链路拆成多个 Agent，并接入 Agent 模型路由；V4.2 进一步加入真实 Agent 评测、产品级测试集和运行进度展示，让项目从“能演示”升级成“可治理、可追踪、可评测、可继续做消融实验”的大模型数据分析产品。
 
 更多讲解内容见：[docs/interview-guide.md](docs/interview-guide.md)。
 
@@ -736,27 +783,16 @@ uvicorn app.main:app --reload --port 8081
 
 如果切到 `METRIC_RETRIEVAL_PROVIDER=milvus`，但 Milvus 没启动或指标索引没同步，只要
 `MILVUS_AUTO_FALLBACK=true`，系统会自动回退到本地 hybrid 检索，保证核心查数流程不被阻塞。
-
 ## 后续路线
 
 - V1：Text-to-SQL MVP，跑通自然语言查数闭环。
 - V2：PromptOps 提示词治理、SQL 自动修复、基础 Text-to-SQL 评测集。
-- V3：RAG 指标口径库，支持 GMV、客单价、复购率等业务定义检索和 prompt 注入。
-- V3.1：混合指标检索，结合关键词/别名命中和轻量 n-gram 相似度。
-- V3.2：指标检索评测集，验证指标召回、误召回和报告输出。
-- V3.3：Milvus 向量数据库检索层，支持指标向量索引同步和本地检索兜底。
-- V3.4：DashScope `text-embedding-v4` 指标向量化，Milvus 使用真实语义向量检索。
-- V3.5：产品控制台升级，新增数据结构资料和 RAG 知识库资料管理页面。
-- V3.6：分析体验增强，加入时间线、逐字输出、图表交互、统一动效和追问建议。
-- V3.7：评测中心，支持 Text-to-SQL、SQL 安全和指标检索的可视化评测工作台。
-- V3.8：结果导出和 SQL 审阅增强，支持图表/表格复制下载、SQL 校验说明、代码内中文注释和自定义测试集评测。
-- V3.13.11：RAG 上传文件自动切片并同步 Milvus，失败后可在文件列表手动重试；数据结构上传文件接入 schema 解析仍保留为后续增强。
-- V3.13.12：RAG 知识库升级为多租户产品级结构，默认知识库、文档登记、切片元数据和 Milvus tenant/workspace 元数据全部打通。
-- V3.13.13：RAG 检索侧增加工作空间隔离，AI 查数会用当前租户/工作空间/知识库过滤 Milvus 文档切片。
-- V4：SQL-of-Thought 多智能体底座，先在单库场景拆分 Schema Linking、知识检索、查询规划、SQL 生成、校验执行、图表和结论 Agent。
-- V4.1：Agent 模型路由接入，SQL 生成、SQL 修复和分析总结可以按工作空间模型 Profile 独立运行。
-- V4.1.1：Agent 工程结构拆分，一个 Agent 一个模块，降低后续多智能体扩展成本。
-- V4.1.2：对话页展示多智能体执行进度，让用户能感知当前执行到哪个 Agent。
-- V4.2：多智能体评测增强，按 Agent 维度观察 SQL 正确率、修复成功率、检索命中率和结论质量。
-- V5：MCP 工具化，把数据库查询、图表生成、导出能力包装成可复用工具。
-- V6：多库路由与更完整的 Agent 协作，支持跨库选择、权限边界和企业级审计。
+- V3：RAG 指标口径库、产品化控制台、多租户产品库、会话持久化和系统设置后端化。
+- V3.13：补齐产品级底座，落地租户、用户、工作空间、数据源、模型配置、安全策略、知识库和评测集管理。
+- V4：SQL-of-Thought 多智能体底座，拆分 Schema Linking、知识检索、查询规划、SQL 生成、SQL 纠错、安全执行、图表和结论 Agent。
+- V4.1：Agent 模型路由接入，系统设置可以为不同 Agent 绑定不同模型 Profile。
+- V4.2：引入引导式 SQL 纠错、真实 Agent 评测 runner、产品级 benchmark 和评测进度展示。
+- V4.3：评测增强，按简单/中等/复杂 SQL 统计准确率，并做 RAG/无 RAG、修复/无修复、多智能体/单链路消融实验。
+- V4.4：复杂查询增强，重点覆盖多表 Join、时间窗口、环比同比、TopN、漏斗、留存和异常归因。
+- V5：MCP 工具化，把数据库查询、图表生成、文件导出、知识库检索包装成可复用工具。
+- V6：多库路由与企业级权限边界，支持跨库选择、数据源权限、审计追踪和更完整的 Agent 协作。

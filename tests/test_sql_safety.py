@@ -1,6 +1,7 @@
 import pytest
 
-from app.tools.sql_tool import ensure_limit, fallback_sql, validate_select_sql
+from app.agents.sql_generation import fallback_sql
+from app.tools.sql_tool import ensure_limit, validate_select_sql
 
 
 @pytest.mark.parametrize(

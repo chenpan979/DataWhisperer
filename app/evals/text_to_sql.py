@@ -3,16 +3,42 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NoReturn
-from typing import Any
+from typing import Any, NoReturn
 
+from app.agents.sql_generation import fallback_sql
 from app.tools.chart_tool import recommend_chart
-from app.tools.sql_tool import ensure_limit, fallback_sql
+from app.tools.sql_tool import ensure_limit
+
+DIFFICULTY_ORDER = ("simple", "medium", "complex")
+
+
+@dataclass(frozen=True)
+class EvalBucketSummary:
+    """??????????????RAG ??????????"""
+
+    name: str
+    total: int
+    passed: int
+    failed: int
+    pass_rate: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "total": self.total,
+            "passed": self.passed,
+            "failed": self.failed,
+            "pass_rate": self.pass_rate,
+        }
 
 
 @dataclass(frozen=True)
 class TextToSqlEvalCase:
-    """单条 Text-to-SQL 评测用例。"""
+    """?? Text-to-SQL ?????
+
+    difficulty ???????????? SQL?requires_rag ? ablation_tags
+    ??????? RAG?SQL-of-Thought??? Agent ??????
+    """
 
     id: str
     question: str
@@ -22,59 +48,77 @@ class TextToSqlEvalCase:
     expected_columns: tuple[str, ...]
     expected_chart_type: str
     must_be_safe: bool = True
+    difficulty: str = "medium"
+    requires_rag: bool = False
+    ablation_tags: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TextToSqlEvalCase":
-        """从 JSON 字典构造评测用例。"""
+        """? JSON ????????????????????????"""
 
         return cls(
             id=str(data["id"]),
             question=str(data["question"]),
-            tags=tuple(data.get("tags", [])),
-            expected_sql_contains=tuple(data.get("expected_sql_contains", [])),
-            forbidden_sql_contains=tuple(data.get("forbidden_sql_contains", [])),
-            expected_columns=tuple(data.get("expected_columns", [])),
+            tags=tuple(_list_value(data.get("tags"))),
+            expected_sql_contains=tuple(_list_value(data.get("expected_sql_contains"))),
+            forbidden_sql_contains=tuple(_list_value(data.get("forbidden_sql_contains"))),
+            expected_columns=tuple(_list_value(data.get("expected_columns"))),
             expected_chart_type=str(data.get("expected_chart_type", "")),
             must_be_safe=bool(data.get("must_be_safe", True)),
+            difficulty=_normalize_difficulty(str(data.get("difficulty", "medium"))),
+            requires_rag=bool(data.get("requires_rag", data.get("rag_required", False))),
+            ablation_tags=tuple(
+                _list_value(data.get("ablation_tags") or data.get("ablation") or [])
+            ),
         )
 
 
 @dataclass(frozen=True)
 class TextToSqlEvalResult:
-    """单条评测结果。"""
+    """???????"""
 
     case_id: str
     passed: bool
     errors: tuple[str, ...]
     generated_sql: str
     chart_type: str
+    difficulty: str
+    requires_rag: bool
+    tags: tuple[str, ...]
+    ablation_tags: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class TextToSqlEvalReport:
-    """一组评测用例的汇总结果。"""
+    """?? Text-to-SQL ??????????"""
 
     total: int
     passed: int
     failed: int
     results: tuple[TextToSqlEvalResult, ...]
+    difficulty_breakdown: tuple[EvalBucketSummary, ...]
+    rag_breakdown: tuple[EvalBucketSummary, ...]
+    ablation_breakdown: tuple[EvalBucketSummary, ...]
 
     @property
     def pass_rate(self) -> float:
-        """通过率。"""
+        """??????"""
 
         if self.total == 0:
             return 0.0
         return round(self.passed / self.total, 4)
 
     def to_dict(self) -> dict[str, Any]:
-        """转换成可序列化字典，方便后续写入报告文件或 API 返回。"""
+        """??????????????????? API ???"""
 
         return {
             "total": self.total,
             "passed": self.passed,
             "failed": self.failed,
             "pass_rate": self.pass_rate,
+            "difficulty_breakdown": [item.to_dict() for item in self.difficulty_breakdown],
+            "rag_breakdown": [item.to_dict() for item in self.rag_breakdown],
+            "ablation_breakdown": [item.to_dict() for item in self.ablation_breakdown],
             "results": [
                 {
                     "case_id": result.case_id,
@@ -82,6 +126,10 @@ class TextToSqlEvalReport:
                     "errors": list(result.errors),
                     "generated_sql": result.generated_sql,
                     "chart_type": result.chart_type,
+                    "difficulty": result.difficulty,
+                    "requires_rag": result.requires_rag,
+                    "tags": list(result.tags),
+                    "ablation_tags": list(result.ablation_tags),
                 }
                 for result in self.results
             ],
@@ -89,25 +137,30 @@ class TextToSqlEvalReport:
 
 
 def default_eval_cases_path() -> Path:
-    """返回默认评测集路径。"""
+    """??????????"""
 
     return Path(__file__).resolve().parents[2] / "evals" / "text_to_sql_cases.json"
 
 
 def load_eval_cases(path: str | Path | None = None) -> list[TextToSqlEvalCase]:
-    """读取 Text-to-SQL 评测用例。"""
+    """?? Text-to-SQL ??????? JSON ???JSON ??? JSONL?"""
 
     case_path = Path(path) if path else default_eval_cases_path()
-    raw_cases = json.loads(case_path.read_text(encoding="utf-8"))
+    text = case_path.read_text(encoding="utf-8-sig")
+    if case_path.suffix.casefold() == ".jsonl":
+        raw_cases = [json.loads(line) for line in text.splitlines() if line.strip()]
+    else:
+        raw_payload = json.loads(text)
+        raw_cases = _extract_case_items(raw_payload)
     return [TextToSqlEvalCase.from_dict(item) for item in raw_cases]
 
 
 def evaluate_case(case: TextToSqlEvalCase, max_rows: int = 100) -> TextToSqlEvalResult:
-    """评测单个用例。
+    """???????
 
-    当前 runner 使用项目内置 fallback SQL 作为被测 SQL 生成器。
-    这样可以在不启动数据库、不调用真实大模型的情况下验证：
-    SQL 安全规则、典型问题覆盖、字段约定和图表推荐是否稳定。
+    ?? runner ?????? fallback SQL ??????????
+    ???????????????????????????????
+    SQL ?????????????????????
     """
 
     errors: list[str] = []
@@ -145,25 +198,93 @@ def evaluate_case(case: TextToSqlEvalCase, max_rows: int = 100) -> TextToSqlEval
         errors=tuple(errors),
         generated_sql=generated_sql,
         chart_type=chart_type,
+        difficulty=case.difficulty,
+        requires_rag=case.requires_rag,
+        tags=case.tags,
+        ablation_tags=case.ablation_tags,
     )
 
 
-def run_text_to_sql_evals(path: str | Path | None = None) -> TextToSqlEvalReport:
-    """运行完整 Text-to-SQL 评测集。"""
+def build_text_to_sql_report(
+    results: tuple[TextToSqlEvalResult, ...]
+) -> TextToSqlEvalReport:
+    """?????????????API ?????????????????"""
 
-    cases = load_eval_cases(path)
-    results = tuple(evaluate_case(case) for case in cases)
     passed = sum(1 for result in results if result.passed)
     return TextToSqlEvalReport(
         total=len(results),
         passed=passed,
         failed=len(results) - passed,
         results=results,
+        difficulty_breakdown=_summarize_difficulty(results),
+        rag_breakdown=_summarize_rag(results),
+        ablation_breakdown=_summarize_ablation(results),
+    )
+
+
+def run_text_to_sql_evals(path: str | Path | None = None) -> TextToSqlEvalReport:
+    """???? Text-to-SQL ?????????????????"""
+
+    cases = load_eval_cases(path)
+    results = tuple(evaluate_case(case) for case in cases)
+    return build_text_to_sql_report(results)
+
+
+def _extract_case_items(raw: Any) -> list[dict[str, Any]]:
+    """?? {cases: [...]}?{items: [...]}?{data: [...]} ??????"""
+
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    if isinstance(raw, dict):
+        for key in ("cases", "items", "data"):
+            value = raw.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return [raw]
+    raise ValueError("Text-to-SQL eval cases must be a JSON object, array, or JSONL file.")
+
+
+def _summarize_difficulty(results: tuple[TextToSqlEvalResult, ...]) -> tuple[EvalBucketSummary, ...]:
+    summaries = []
+    for difficulty in DIFFICULTY_ORDER:
+        bucket = [result for result in results if result.difficulty == difficulty]
+        summaries.append(_bucket_summary(difficulty, bucket))
+    return tuple(summaries)
+
+
+def _summarize_rag(results: tuple[TextToSqlEvalResult, ...]) -> tuple[EvalBucketSummary, ...]:
+    return (
+        _bucket_summary("rag_required", [result for result in results if result.requires_rag]),
+        _bucket_summary("no_rag_required", [result for result in results if not result.requires_rag]),
+    )
+
+
+def _summarize_ablation(results: tuple[TextToSqlEvalResult, ...]) -> tuple[EvalBucketSummary, ...]:
+    names = sorted({tag for result in results for tag in result.ablation_tags})
+    if not names:
+        return ()
+    return tuple(
+        _bucket_summary(name, [result for result in results if name in result.ablation_tags])
+        for name in names
+    )
+
+
+def _bucket_summary(name: str, bucket: list[TextToSqlEvalResult]) -> EvalBucketSummary:
+    total = len(bucket)
+    passed = sum(1 for result in bucket if result.passed)
+    failed = total - passed
+    pass_rate = round(passed / total, 4) if total else 0.0
+    return EvalBucketSummary(
+        name=name,
+        total=total,
+        passed=passed,
+        failed=failed,
+        pass_rate=pass_rate,
     )
 
 
 def _sample_row_for_columns(columns: tuple[str, ...]) -> dict[str, Any]:
-    """为图表推荐构造一行最小样例数据。"""
+    """????????????????"""
 
     row: dict[str, Any] = {}
     for index, column in enumerate(columns):
@@ -175,7 +296,7 @@ def _sample_row_for_columns(columns: tuple[str, ...]) -> dict[str, Any]:
 
 
 def _sample_category_value(column: str) -> str:
-    """根据字段名给出适合图表推荐的样例分类值。"""
+    """????????????????????"""
 
     lowered = column.lower()
     if "month" in lowered or "date" in lowered:
@@ -186,13 +307,44 @@ def _sample_category_value(column: str) -> str:
         return "Electronics"
     if "product" in lowered:
         return "Aurora Laptop"
+    if "industry" in lowered:
+        return "Retail"
     return "sample"
 
 
-def main() -> NoReturn:
-    """命令行入口。
+def _normalize_difficulty(value: str) -> str:
+    lowered = value.strip().lower()
+    if lowered in DIFFICULTY_ORDER:
+        return lowered
+    if lowered in {"easy", "basic", "??"}:
+        return "simple"
+    if lowered in {"normal", "intermediate", "??"}:
+        return "medium"
+    if lowered in {"hard", "advanced", "??"}:
+        return "complex"
+    return "medium"
 
-    用法：
+
+def _list_value(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list | tuple | set):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    if text.startswith("[") and text.endswith("]"):
+        try:
+            return _list_value(json.loads(text))
+        except json.JSONDecodeError:
+            pass
+    return [part.strip() for part in text.split("|") if part.strip()]
+
+
+def main() -> NoReturn:
+    """??????
+
+    ???
         python -m app.evals.text_to_sql
     """
 

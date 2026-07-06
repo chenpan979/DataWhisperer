@@ -12,6 +12,10 @@ const state = {
   evaluationFilter: "all",
   evaluationLoaded: false,
   evaluationTab: "overview",
+  evaluationProgressTimer: null,
+  evaluationProgressStartedAt: 0,
+  evaluationProgressPercent: 0,
+  evaluationProgressStep: 0,
   settingsLoaded: false,
   schemaTab: "files",
   schemaGraphLoaded: false,
@@ -82,13 +86,13 @@ const pendingProcessSteps = [
 ];
 
 const agentPipeline = [
-  { key: "schema", agent: "SchemaLinkingAgent", title: "读取数据结构", traceNames: ["schema"] },
-  { key: "knowledge", agent: "KnowledgeRetrievalAgent", title: "检索指标与知识库", traceNames: ["metric_retrieval", "knowledge_retrieval"] },
-  { key: "planning", agent: "QueryPlanningAgent", title: "生成 SQL-of-Thought 计划", traceNames: ["query_planning"] },
-  { key: "sql", agent: "SQLGenerationAgent", title: "生成或修复 SQL", traceNames: ["generate_sql", "sql_repair"] },
-  { key: "execution", agent: "ValidationExecutionAgent", title: "安全校验与执行查询", traceNames: ["security_policy", "execute_sql"] },
-  { key: "chart", agent: "ChartAgent", title: "推荐可视化图表", traceNames: ["chart"] },
-  { key: "insight", agent: "InsightAgent", title: "生成业务结论", traceNames: ["insight"] },
+  { key: "schema", agent: "SchemaLinkingAgent", title: "读取数据结构", shortTitle: "读表结构", traceNames: ["schema"] },
+  { key: "knowledge", agent: "KnowledgeRetrievalAgent", title: "检索指标与知识库", shortTitle: "检索知识", traceNames: ["metric_retrieval", "knowledge_retrieval"] },
+  { key: "planning", agent: "QueryPlanningAgent", title: "生成 SQL-of-Thought 计划", shortTitle: "查询规划", traceNames: ["query_planning"] },
+  { key: "sql", agent: "SQLGenerationAgent", title: "生成或修复 SQL", shortTitle: "生成SQL", traceNames: ["generate_sql", "sql_repair"] },
+  { key: "execution", agent: "ValidationExecutionAgent", title: "安全校验与执行查询", shortTitle: "安全执行", traceNames: ["security_policy", "execute_sql"] },
+  { key: "chart", agent: "ChartAgent", title: "推荐可视化图表", shortTitle: "推荐图表", traceNames: ["chart"] },
+  { key: "insight", agent: "InsightAgent", title: "生成业务结论", shortTitle: "业务结论", traceNames: ["insight"] },
 ];
 
 const chartTypeLabels = {
@@ -275,12 +279,22 @@ const el = {
   evaluationDatasetHint: document.querySelector("#evaluationDatasetHint"),
   evaluationDatasetMenu: document.querySelector("#evaluationDatasetMenu"),
   evaluationState: document.querySelector("#evaluationState"),
+  evaluationProgressCard: document.querySelector("#evaluationProgressCard"),
+  evaluationProgressDataset: document.querySelector("#evaluationProgressDataset"),
+  evaluationProgressTitle: document.querySelector("#evaluationProgressTitle"),
+  evaluationProgressDetail: document.querySelector("#evaluationProgressDetail"),
+  evaluationProgressPercent: document.querySelector("#evaluationProgressPercent"),
+  evaluationProgressElapsed: document.querySelector("#evaluationProgressElapsed"),
+  evaluationProgressBar: document.querySelector("#evaluationProgressBar"),
+  evaluationProgressSteps: document.querySelector("#evaluationProgressSteps"),
   evaluationKpis: document.querySelector("#evaluationKpis"),
   evaluationTabs: document.querySelector("#evaluationTabs"),
   evaluationTabPanels: document.querySelectorAll(".evaluation-tab-panel"),
   evaluationTrendChart: document.querySelector("#evaluationTrendChart"),
   evaluationIssueList: document.querySelector("#evaluationIssueList"),
   evaluationRecentRuns: document.querySelector("#evaluationRecentRuns"),
+  evaluationDifficultyList: document.querySelector("#evaluationDifficultyList"),
+  evaluationAblationList: document.querySelector("#evaluationAblationList"),
   evaluationSuites: document.querySelector("#evaluationSuites"),
   evaluationVersionBody: document.querySelector("#evaluationVersionBody"),
   evaluationFilters: document.querySelector("#evaluationFilters"),
@@ -1280,6 +1294,7 @@ async function runAnalysis() {
 }
 
 async function renderResponse(data) {
+  stopPendingProcess();
   el.assistantResultMessage.classList.remove("is-loading");
   el.metricRows.textContent = data.rows.length;
   el.metricColumns.textContent = data.columns.length;
@@ -1291,7 +1306,10 @@ async function renderResponse(data) {
 
   renderWarnings([]);
   renderTable(data.columns, data.rows);
-  renderProcessTimeline(normalizeTraceSteps(data.trace_steps || []));
+  const completedTraceSteps = normalizeTraceSteps(data.trace_steps || [], { completed: true });
+  data.trace_steps = completedTraceSteps;
+  state.lastResponse = data;
+  renderProcessTimeline(completedTraceSteps);
   renderChart(data.chart, data.rows);
   typeInsight(data.insight || "暂无分析结论。");
   renderFollowups(generateFollowupQuestions(data));
@@ -1436,6 +1454,27 @@ function finalizeAssistantMessageForHistory(root) {
     panel.classList.add("collapsed");
     panel.classList.remove("working", "failed");
     panel.classList.add("ok");
+
+    const current = panel.querySelector("#agentProgressCurrent, .agent-progress-title strong");
+    const meta = panel.querySelector("#agentProgressMeta, .agent-progress-title small");
+    if (current) {
+      current.textContent = "多智能体分析完成";
+    }
+    if (meta) {
+      meta.textContent = agentPipeline.length + "/" + agentPipeline.length + " 个 Agent";
+    }
+    panel.querySelectorAll(".agent-step").forEach((step) => {
+      step.classList.remove("active", "pending", "retry", "failed");
+      step.classList.add("ok");
+      const index = step.querySelector(".agent-step-index");
+      const status = step.querySelector(".agent-step-status");
+      if (index) {
+        index.innerHTML = "&#10003;";
+      }
+      if (status) {
+        status.textContent = "成功";
+      }
+    });
   });
   root.querySelectorAll(".agent-progress-toggle").forEach((button) => {
     button.setAttribute("aria-expanded", "false");
@@ -2266,16 +2305,16 @@ function renderAgentProgress(steps) {
   el.agentProgressMeta.textContent = `${okCount}/${stages.length} 个 Agent`;
   el.agentProgressList.innerHTML = stages
     .map((stage, index) => {
-      const detail = stage.detail || stage.title;
+      const detail = `${stage.agent}：${stage.detail || stage.title}`;
+      const stepMark = stage.status === "ok" ? "&#10003;" : index + 1;
       return `
-        <div class="agent-step ${escapeHtml(stage.status)}">
-          <span class="agent-step-index">${index + 1}</span>
+        <div class="agent-step ${escapeHtml(stage.status)}" title="${escapeHtml(detail)}">
+          <span class="agent-step-index" aria-hidden="true">${stepMark}</span>
           <span class="agent-step-main">
-            <strong>${escapeHtml(stage.agent)}</strong>
+            <strong>${escapeHtml(stage.shortTitle || stage.title)}</strong>
             <small>${escapeHtml(stage.title)}</small>
           </span>
           <span class="agent-step-status">${escapeHtml(labelForStatus(stage.status))}</span>
-          <span class="agent-step-detail">${escapeHtml(detail)}</span>
         </div>
       `;
     })
@@ -2322,15 +2361,41 @@ function toggleAgentProgressFromButton(button) {
     state.agentProgressOpen = nextOpen;
   }
 }
-function normalizeTraceSteps(steps) {
-  return steps.map((step) => ({
+function normalizeTraceSteps(steps, options = {}) {
+  const normalizedSteps = steps.map((step) => ({
     name: step.name,
     title: labelForStep(step.name),
     status: step.status,
     detail: step.detail || "该步骤已完成。",
   }));
+  return options.completed ? completeTraceSteps(normalizedSteps) : normalizedSteps;
 }
 
+function completeTraceSteps(steps) {
+  if (steps.some((step) => step.status === "failed")) {
+    return steps;
+  }
+
+  const completedSteps = steps.map((step) => ({
+    ...step,
+    status: "ok",
+    detail: step.detail || "该步骤已完成。",
+  }));
+
+  agentPipeline.forEach((stage) => {
+    const hasStageStep = completedSteps.some((step) => stage.traceNames.includes(step.name));
+    if (!hasStageStep) {
+      completedSteps.push({
+        name: stage.traceNames[0],
+        title: stage.title,
+        status: "ok",
+        detail: stage.agent + " 已完成：" + stage.title,
+      });
+    }
+  });
+
+  return completedSteps;
+}
 function renderChart(chartOption, rows) {
   if (state.chart) {
     state.chart.dispose();
@@ -3520,21 +3585,45 @@ function switchView(viewId) {
   }
 }
 
+const evaluationProgressSteps = [
+  {
+    title: "准备数据",
+    detail: "正在读取评测数据集、同步内置 benchmark，并初始化评测配置。",
+  },
+  {
+    title: "启动 Runner",
+    detail: "正在启动真实 Agent Runner，准备调用多智能体查数链路。",
+  },
+  {
+    title: "执行用例",
+    detail: "正在运行 Text-to-SQL 用例，包含 Schema Linking、RAG 检索、SQL 生成和修复。",
+  },
+  {
+    title: "质量校验",
+    detail: "正在校验 SQL 片段、安全边界、图表类型、难度分层和消融标签。",
+  },
+  {
+    title: "汇总报告",
+    detail: "正在生成 KPI、趋势、失败案例和模型对比结果。",
+  },
+];
+
 async function runEvaluations() {
   const datasetFileId = el.evaluationDatasetSelect?.value || "";
   const datasetName = selectedEvaluationDatasetName();
+  const progress = startEvaluationProgress({ datasetName, datasetFileId });
   setEvaluationState("运行中", "idle");
   el.runEvaluationButton.disabled = true;
   el.runEvaluationButton.querySelector("span").textContent = "运行中";
   el.evaluationRunMeta.textContent = datasetFileId
     ? `正在执行上传测试集：${datasetName}`
-    : "正在执行内置评测套件";
+    : "正在执行真实 Agent 评测套件";
   renderEvaluationLoading();
   try {
     const report = await fetchJson("/api/evaluations/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dataset_file_id: datasetFileId || null }),
+      body: JSON.stringify({ dataset_file_id: datasetFileId || null, runner_mode: "agent" }),
     });
     state.evaluationReport = report;
     state.evaluationLoaded = true;
@@ -3542,16 +3631,146 @@ async function runEvaluations() {
     const failed = report.cases.filter((item) => item.status === "failed").length;
     setEvaluationState(failed ? "存在失败" : "全部通过", failed ? "warning" : "ok");
     el.evaluationRunMeta.textContent = `${report.dataset_name || datasetName} · ${formatDate(report.generated_at)} · ${report.duration_ms}ms`;
+    finishEvaluationProgress(progress, report, failed);
   } catch (error) {
     setEvaluationState("运行失败", "error");
     el.evaluationRunMeta.textContent = error.message;
+    failEvaluationProgress(progress, error);
     renderEvaluationError(error.message);
   } finally {
+    stopEvaluationProgressTimer();
     el.runEvaluationButton.disabled = false;
     el.runEvaluationButton.querySelector("span").textContent = "运行评测";
   }
 }
 
+function startEvaluationProgress({ datasetName, datasetFileId }) {
+  const estimatedSeconds = estimateEvaluationSeconds(datasetName, datasetFileId);
+  const progress = {
+    datasetName,
+    datasetFileId,
+    estimatedSeconds,
+    startedAt: Date.now(),
+  };
+  state.evaluationProgressStartedAt = progress.startedAt;
+  state.evaluationProgressPercent = 0;
+  state.evaluationProgressStep = 0;
+  if (el.evaluationProgressCard) {
+    el.evaluationProgressCard.hidden = false;
+    el.evaluationProgressCard.className = "evaluation-progress-card running";
+  }
+  if (el.evaluationProgressDataset) {
+    el.evaluationProgressDataset.textContent = datasetFileId ? `上传测试集 · ${datasetName}` : "内置真实 Agent 评测集";
+  }
+  renderEvaluationProgress(progress, 4);
+  stopEvaluationProgressTimer();
+  state.evaluationProgressTimer = window.setInterval(() => {
+    const elapsedSeconds = Math.max(1, Math.floor((Date.now() - progress.startedAt) / 1000));
+    const timeRatio = Math.min(0.92, elapsedSeconds / estimatedSeconds);
+    const curved = 1 - Math.pow(1 - timeRatio, 1.8);
+    const nextPercent = Math.min(92, Math.max(state.evaluationProgressPercent + 1, Math.round(curved * 92)));
+    renderEvaluationProgress(progress, nextPercent);
+  }, 900);
+  return progress;
+}
+
+function finishEvaluationProgress(progress, report, failed) {
+  renderEvaluationProgress(progress, 100, {
+    title: failed ? "评测完成，存在失败用例" : "评测完成，全部通过",
+    detail: `${report.dataset_name || progress.datasetName} 已完成 ${report.cases.length} 条用例，耗时 ${report.duration_ms}ms。`,
+    status: failed ? "warning" : "done",
+  });
+}
+
+function failEvaluationProgress(progress, error) {
+  renderEvaluationProgress(progress, Math.max(state.evaluationProgressPercent, 12), {
+    title: "评测运行失败",
+    detail: error.message || "评测接口返回异常，请查看后端日志。",
+    status: "failed",
+  });
+}
+
+function stopEvaluationProgressTimer() {
+  if (state.evaluationProgressTimer) {
+    window.clearInterval(state.evaluationProgressTimer);
+    state.evaluationProgressTimer = null;
+  }
+}
+
+function renderEvaluationProgress(progress, percent, override = null) {
+  const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - progress.startedAt) / 1000));
+  const stepIndex =
+    safePercent >= 100
+      ? evaluationProgressSteps.length - 1
+      : Math.min(evaluationProgressSteps.length - 1, Math.floor((safePercent / 100) * evaluationProgressSteps.length));
+  const step = evaluationProgressSteps[stepIndex];
+  state.evaluationProgressPercent = safePercent;
+  state.evaluationProgressStep = stepIndex;
+
+  if (el.evaluationProgressCard) {
+    const statusClass = override?.status === "failed" ? "failed" : override?.status === "done" ? "done" : "running";
+    el.evaluationProgressCard.className = `evaluation-progress-card ${statusClass}`;
+  }
+  if (el.evaluationProgressTitle) {
+    el.evaluationProgressTitle.textContent = override?.title || step.title;
+  }
+  if (el.evaluationProgressDetail) {
+    el.evaluationProgressDetail.textContent = override?.detail || step.detail;
+  }
+  if (el.evaluationProgressPercent) {
+    el.evaluationProgressPercent.textContent = `${safePercent}%`;
+  }
+  if (el.evaluationProgressElapsed) {
+    el.evaluationProgressElapsed.textContent = `已耗时 ${formatElapsedSeconds(elapsedSeconds)}`;
+  }
+  if (el.evaluationProgressBar) {
+    el.evaluationProgressBar.style.width = `${safePercent}%`;
+  }
+  if (el.evaluationProgressSteps) {
+    el.evaluationProgressSteps.innerHTML = evaluationProgressSteps
+      .map((item, index) => {
+        const stateClass = index < stepIndex || safePercent >= 100 ? "done" : index === stepIndex ? "active" : "pending";
+        const marker = index < stepIndex || safePercent >= 100 ? "✓" : String(index + 1);
+        return `
+          <span class="evaluation-progress-step ${stateClass}">
+            <i>${escapeHtml(marker)}</i>
+            <span>${escapeHtml(item.title)}</span>
+          </span>
+        `;
+      })
+      .join("");
+  }
+}
+
+function estimateEvaluationSeconds(datasetName, datasetFileId) {
+  if (!datasetFileId) {
+    return 42;
+  }
+  const lowered = String(datasetName || "").toLowerCase();
+  if (lowered.includes("360")) {
+    return 210;
+  }
+  if (lowered.includes("240")) {
+    return 150;
+  }
+  if (lowered.includes("100")) {
+    return 90;
+  }
+  if (lowered.includes("18")) {
+    return 45;
+  }
+  return 75;
+}
+
+function formatElapsedSeconds(totalSeconds) {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
 function setEvaluationState(label, kind = "idle") {
   el.evaluationState.textContent = label;
   el.evaluationState.className = `state-label ${kind}`;
@@ -3572,6 +3791,12 @@ function renderEvaluationLoading() {
   el.evaluationTrendChart.innerHTML = '<div class="inline-empty">正在生成质量趋势</div>';
   el.evaluationIssueList.innerHTML = '<div class="inline-empty">正在统计问题分布</div>';
   el.evaluationRecentRuns.innerHTML = '<div class="inline-empty">正在读取最近任务</div>';
+  if (el.evaluationDifficultyList) {
+    el.evaluationDifficultyList.innerHTML = '<div class="inline-empty">正在统计难度分层</div>';
+  }
+  if (el.evaluationAblationList) {
+    el.evaluationAblationList.innerHTML = '<div class="inline-empty">正在计算消融表现</div>';
+  }
   el.evaluationSuites.innerHTML = '<div class="inline-empty">正在运行评测套件</div>';
   el.evaluationVersionBody.innerHTML = "";
   el.evaluationCaseList.innerHTML = '<div class="inline-empty">等待评测结果</div>';
@@ -3584,6 +3809,12 @@ function renderEvaluationError(message) {
   el.evaluationTrendChart.innerHTML = "";
   el.evaluationIssueList.innerHTML = "";
   el.evaluationRecentRuns.innerHTML = "";
+  if (el.evaluationDifficultyList) {
+    el.evaluationDifficultyList.innerHTML = "";
+  }
+  if (el.evaluationAblationList) {
+    el.evaluationAblationList.innerHTML = "";
+  }
   el.evaluationSuites.innerHTML = "";
   el.evaluationVersionBody.innerHTML = "";
   el.evaluationModelBody.innerHTML = "";
@@ -3596,6 +3827,7 @@ function renderEvaluationReport(report) {
   renderEvaluationTrend(report.trend_points || []);
   renderEvaluationIssues(report.issue_distribution || []);
   renderEvaluationRecentRuns(report.recent_runs || []);
+  renderEvaluationBreakdowns(report);
   renderEvaluationSuites(report.suites || []);
   renderEvaluationVersionSnapshots(report.version_snapshots || []);
   renderEvaluationModelComparisons(report.model_comparisons || []);
@@ -3736,6 +3968,129 @@ function renderEvaluationRecentRuns(items) {
     .join("");
 }
 
+function renderEvaluationBreakdowns(report) {
+  const textSuite = findEvaluationSuite(report, "text_to_sql");
+  renderEvaluationBucketList(el.evaluationDifficultyList, textSuite?.difficulty_breakdown || [], {
+    empty: "运行 Text-to-SQL 评测后查看难度分层",
+    compact: false,
+  });
+  renderEvaluationAblationList(textSuite);
+}
+
+function findEvaluationSuite(report, suiteId) {
+  return (report?.suites || []).find((suite) => suite.id === suiteId) || null;
+}
+
+function renderEvaluationAblationList(suite) {
+  if (!el.evaluationAblationList) {
+    return;
+  }
+  const ragItems = (suite?.rag_breakdown || []).map((item) => ({ ...item, group: "知识增强" }));
+  const ablationItems = (suite?.ablation_breakdown || []).map((item) => ({ ...item, group: "消融标签" }));
+  const items = [...ragItems, ...ablationItems];
+  if (!items.length) {
+    el.evaluationAblationList.innerHTML = '<div class="inline-empty">暂无 RAG 或消融分层数据</div>';
+    return;
+  }
+  el.evaluationAblationList.innerHTML = items
+    .map((item) => renderEvaluationBucketItem(item, { showGroup: true }))
+    .join("");
+}
+
+function renderEvaluationBucketList(container, items, options = {}) {
+  if (!container) {
+    return;
+  }
+  if (!items.length) {
+    container.innerHTML = `<div class="inline-empty">${escapeHtml(options.empty || "暂无分层数据")}</div>`;
+    return;
+  }
+  container.innerHTML = items
+    .map((item) => renderEvaluationBucketItem(item, options))
+    .join("");
+}
+
+function renderEvaluationBucketItem(item, options = {}) {
+  const total = Number(item.total || 0);
+  const passRate = Number(item.pass_rate || 0);
+  const width = total ? Math.max(4, Math.round(passRate * 100)) : 0;
+  const status = Number(item.failed || 0) > 0 ? "warning" : "ok";
+  return `
+    <div class="evaluation-breakdown-item ${status}">
+      <div class="breakdown-row">
+        <span>
+          <strong>${escapeHtml(labelForEvalBucket(item.name))}</strong>
+          ${options.showGroup && item.group ? `<em>${escapeHtml(item.group)}</em>` : ""}
+        </span>
+        <b>${formatPercent(passRate)}</b>
+      </div>
+      <div class="progress-track"><span style="width: ${width}%"></span></div>
+      <small>${escapeHtml(item.passed || 0)}/${escapeHtml(total)} 通过${item.failed ? ` · ${escapeHtml(item.failed)} 个失败` : ""}</small>
+    </div>
+  `;
+}
+
+function renderSuiteBreakdowns(suite) {
+  const difficulty = suite.difficulty_breakdown || [];
+  const rag = suite.rag_breakdown || [];
+  if (!difficulty.length && !rag.length) {
+    return "";
+  }
+  const chips = [...difficulty, ...rag]
+    .filter((item) => Number(item.total || 0) > 0)
+    .map(
+      (item) => `<span class="suite-chip">${escapeHtml(labelForEvalBucket(item.name))} ${formatPercent(item.pass_rate)}</span>`,
+    )
+    .join("");
+  return chips ? `<div class="suite-chip-row">${chips}</div>` : "";
+}
+
+function renderEvaluationCaseBadges(item) {
+  const badges = [];
+  if (item.difficulty) {
+    badges.push({ label: labelForEvalBucket(item.difficulty), kind: "difficulty" });
+  }
+  if (item.requires_rag) {
+    badges.push({ label: "需要 RAG", kind: "rag" });
+  }
+  (item.ablation_tags || []).slice(0, 3).forEach((tag) => {
+    badges.push({ label: labelForEvalBucket(tag), kind: "ablation" });
+  });
+  if (!badges.length) {
+    return "";
+  }
+  return `
+    <span class="case-badges">
+      ${badges
+        .map((badge) => `<span class="case-badge ${escapeHtml(badge.kind)}">${escapeHtml(badge.label)}</span>`)
+        .join("")}
+    </span>
+  `;
+}
+
+function labelForEvalBucket(name) {
+  const labels = {
+    simple: "简单 SQL",
+    medium: "中等 SQL",
+    complex: "复杂 SQL",
+    rag_required: "需要 RAG",
+    no_rag_required: "无需 RAG",
+    baseline: "基础链路",
+    chart: "图表推荐",
+    metric_retrieval: "指标检索",
+    multi_agent: "多智能体",
+    rag_metric: "RAG 指标",
+    sql_of_thought: "SQL-of-Thought",
+    sql_repair: "SQL 纠错",
+    safety: "安全边界",
+  };
+  if (labels[name]) {
+    return labels[name];
+  }
+  return String(name || "未分组")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 function renderEvaluationSuites(suites) {
   if (!suites.length) {
     el.evaluationSuites.innerHTML = '<div class="inline-empty">暂无评测套件</div>';
@@ -3748,6 +4103,7 @@ function renderEvaluationSuites(suites) {
           <div>
             <strong>${escapeHtml(suite.name)}</strong>
             <p>${escapeHtml(suite.description)}</p>
+            ${renderSuiteBreakdowns(suite)}
           </div>
           <div class="suite-score">
             <span>${formatPercent(suite.pass_rate)}</span>
@@ -3827,6 +4183,7 @@ function renderEvaluationCases() {
             <span class="case-main">
               <strong>${escapeHtml(item.title)}</strong>
               <small>${escapeHtml(item.suite_name)} · ${escapeHtml((item.tags || []).join(" / ") || "baseline")}</small>
+              ${renderEvaluationCaseBadges(item)}
             </span>
           </summary>
           <div class="case-detail-grid">
@@ -3922,7 +4279,7 @@ function deltaForKpi(id) {
     sql_quality: "稳定",
     sql_safety: "硬边界",
     retrieval: "RAG 增强",
-    latency: "离线评测",
+    latency: "运行耗时",
   };
   return labels[id] || "监控中";
 }
@@ -3985,7 +4342,8 @@ async function loadManagedFiles(category) {
   const config = fileManagers[category];
   setFileState(category, "读取中");
   try {
-    const data = await fetchJson(config.endpoint);
+    const data =
+      category === "evaluation" ? await syncBuiltinEvaluationDatasets(config) : await fetchJson(config.endpoint);
     state.files[category] = data.files || [];
     renderManagedFiles(category);
     if (category === "evaluation") {
@@ -3997,6 +4355,14 @@ async function loadManagedFiles(category) {
   }
 }
 
+async function syncBuiltinEvaluationDatasets(config) {
+  try {
+    return await fetchJson(`${config.endpoint}/sync-builtins`, { method: "POST" });
+  } catch (error) {
+    console.warn("Failed to sync built-in evaluation datasets", error);
+    return fetchJson(config.endpoint);
+  }
+}
 function renderEvaluationDatasetOptions() {
   if (!el.evaluationDatasetSelect) {
     return;

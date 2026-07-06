@@ -1,7 +1,8 @@
 import pytest
 
 from app.tools.insight_tool import generate_insight
-from app.tools.sql_tool import generate_sql, repair_sql
+from app.agents.sql_repair import repair_sql
+from app.agents.sql_generation import generate_sql
 
 
 class FakeJsonLLM:

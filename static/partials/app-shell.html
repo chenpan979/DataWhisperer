@@ -660,6 +660,24 @@
                 </div>
               </div>
 
+              <section class="evaluation-progress-card" id="evaluationProgressCard" hidden>
+                <div class="evaluation-progress-head">
+                  <div>
+                    <span class="progress-eyebrow" id="evaluationProgressDataset">评测数据源</span>
+                    <h3 id="evaluationProgressTitle">正在准备评测</h3>
+                    <p id="evaluationProgressDetail">正在读取测试集和评测配置，请稍候。</p>
+                  </div>
+                  <div class="evaluation-progress-meter">
+                    <strong id="evaluationProgressPercent">0%</strong>
+                    <span id="evaluationProgressElapsed">0s</span>
+                  </div>
+                </div>
+                <div class="evaluation-progress-track" aria-hidden="true">
+                  <span id="evaluationProgressBar"></span>
+                </div>
+                <div class="evaluation-progress-steps" id="evaluationProgressSteps"></div>
+              </section>
+
               <div class="evaluation-kpis" id="evaluationKpis"></div>
 
               <section class="panel evaluation-console">
@@ -701,6 +719,25 @@
                         </div>
                       </div>
                       <div class="recent-run-list" id="evaluationRecentRuns"></div>
+                    </section>
+                    <section class="evaluation-card">
+                      <div class="panel-heading">
+                        <div>
+                          <h2>SQL 难度分层</h2>
+                          <p>简单、中等、复杂问题的通过率</p>
+                        </div>
+                      </div>
+                      <div class="evaluation-breakdown-list" id="evaluationDifficultyList"></div>
+                    </section>
+
+                    <section class="evaluation-card">
+                      <div class="panel-heading">
+                        <div>
+                          <h2>RAG / 消融观察</h2>
+                          <p>对比有无知识增强和关键策略覆盖</p>
+                        </div>
+                      </div>
+                      <div class="evaluation-breakdown-list" id="evaluationAblationList"></div>
                     </section>
                   </div>
                 </div>

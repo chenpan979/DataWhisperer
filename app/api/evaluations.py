@@ -5,22 +5,27 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
+from app.core.database import get_engine
+from app.core.llm import get_llm_client
+from app.evals.agent_text_to_sql import run_agent_text_to_sql_evals
 from app.evals.metric_retrieval import load_metric_retrieval_cases, run_metric_retrieval_evals
 from app.evals.text_to_sql import (
     TextToSqlEvalCase,
-    TextToSqlEvalReport,
+    build_text_to_sql_report,
     evaluate_case as evaluate_text_to_sql_case,
     load_eval_cases,
     run_text_to_sql_evals,
 )
 from app.models.files import FilePreview, ManagedFile, ManagedFileList
 from app.models.evaluations import (
+    EvaluationBucketSummary,
     EvaluationCaseResult,
     EvaluationIssueDistribution,
     EvaluationKpi,
@@ -36,6 +41,15 @@ from app.tools.file_store import ManagedFileStore, get_evaluation_dataset_store
 from app.tools.sql_tool import validate_select_sql
 
 router = APIRouter(prefix="/evaluations", tags=["evaluations"])
+EVAL_DATASET_DIR = Path(__file__).resolve().parents[2] / "evals"
+AGENT_EVAL_CASES_PATH = EVAL_DATASET_DIR / "text_to_sql_18_table_cases.jsonl"
+BUILTIN_EVALUATION_DATASETS = (
+    EVAL_DATASET_DIR / "text_to_sql_cases.json",
+    EVAL_DATASET_DIR / "text_to_sql_18_table_cases.jsonl",
+    EVAL_DATASET_DIR / "text_to_sql_upload_100_cases.jsonl",
+    EVAL_DATASET_DIR / "text_to_sql_product_240_cases.jsonl",
+    EVAL_DATASET_DIR / "text_to_sql_product_360_cases.jsonl",
+)
 
 
 @router.get("/datasets", response_model=ManagedFileList)
@@ -56,6 +70,18 @@ async def upload_evaluation_dataset(file: UploadFile = File(...)) -> ManagedFile
     return await _upload_dataset_file(get_evaluation_dataset_store(), file)
 
 
+@router.post("/datasets/sync-builtins", response_model=ManagedFileList)
+def sync_builtin_evaluation_datasets() -> ManagedFileList:
+    """把项目内置评测集同步到测试集管理列表。
+
+    evals/ 目录中的 benchmark 是代码仓库里的最新版本；测试集管理页面读取的是
+    storage/evaluation_datasets 下的已上传副本。同步时只替换同名内置文件，用户自己上传的
+    custom 测试集会保留。
+    """
+
+    return _sync_builtin_dataset_files(get_evaluation_dataset_store())
+
+
 @router.delete("/datasets/{file_id}")
 def delete_evaluation_dataset(file_id: str) -> dict[str, bool]:
     """删除用户上传的评测测试集文件。"""
@@ -73,6 +99,30 @@ def preview_evaluation_dataset(file_id: str) -> FilePreview:
 def _list_dataset_files(store: ManagedFileStore) -> ManagedFileList:
     return ManagedFileList(category=store.config.category, files=store.list_files())
 
+
+
+def _sync_builtin_dataset_files(store: ManagedFileStore) -> ManagedFileList:
+    """同步内置 benchmark 文件到上传文件仓库。"""
+
+    missing = [path.name for path in BUILTIN_EVALUATION_DATASETS if not path.exists()]
+    if missing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"内置评测集文件不存在：{', '.join(missing)}",
+        )
+
+    builtin_names = {path.name for path in BUILTIN_EVALUATION_DATASETS}
+    for file in store.list_files():
+        if file.name in builtin_names:
+            store.delete(file.id)
+
+    for path in BUILTIN_EVALUATION_DATASETS:
+        try:
+            store.save(original_name=path.name, content=path.read_bytes())
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return _list_dataset_files(store)
 
 async def _upload_dataset_file(store: ManagedFileStore, file: UploadFile) -> ManagedFile:
     try:
@@ -141,8 +191,16 @@ SQL_SAFETY_CASES = (
 )
 
 
+def _normalize_runner_mode(value: str | None) -> str:
+    """标准化评测 Runner 模式，避免前端传错值后静默降级。"""
+
+    mode = (value or "offline").strip().lower()
+    if mode not in {"offline", "agent"}:
+        raise HTTPException(status_code=400, detail="runner_mode must be offline or agent.")
+    return mode
+
 @router.post("/run", response_model=EvaluationRunResponse)
-def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
+async def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
     """运行评测套件并返回前端展示所需的质量报告。
 
     默认使用项目内置评测集。当前端传入 dataset_file_id 时，Text-to-SQL
@@ -151,10 +209,13 @@ def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
 
     started = perf_counter()
     selected = set(request.suites)
+    runner_mode = _normalize_runner_mode(request.runner_mode)
     run_all = not selected
     suites: list[EvaluationSuiteSummary] = []
     cases: list[EvaluationCaseResult] = []
     dataset_name = "内置评测集"
+    if runner_mode == "agent":
+        dataset_name = "内置 18 表 Agent 评测集"
     custom_text_cases: list[TextToSqlEvalCase] | None = None
 
     if request.dataset_file_id:
@@ -162,7 +223,11 @@ def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
         dataset_name = dataset_file.name
 
     if run_all or "text_to_sql" in selected:
-        summary, results = _run_text_to_sql_suite(custom_text_cases, dataset_name)
+        summary, results = await _run_text_to_sql_suite(
+            custom_text_cases,
+            dataset_name,
+            runner_mode=runner_mode,
+        )
         suites.append(summary)
         cases.extend(results)
 
@@ -184,7 +249,8 @@ def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
         duration_ms=duration_ms,
         dataset_file_id=request.dataset_file_id or "",
         dataset_name=dataset_name,
-        kpis=_build_kpis(suites, duration_ms),
+        runner_mode=runner_mode,
+        kpis=_build_kpis(suites, duration_ms, runner_mode),
         suites=suites,
         cases=cases,
         version_snapshots=version_snapshots,
@@ -195,28 +261,45 @@ def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
     )
 
 
-def _run_text_to_sql_suite(
+async def _run_text_to_sql_suite(
     custom_cases: list[TextToSqlEvalCase] | None = None,
-    dataset_name: str = "内置评测集",
+    dataset_name: str = "\u5185\u7f6e\u8bc4\u6d4b\u96c6",
+    runner_mode: str = "offline",
 ) -> tuple[EvaluationSuiteSummary, list[EvaluationCaseResult]]:
     started = perf_counter()
     if custom_cases is None:
+        cases = load_eval_cases(AGENT_EVAL_CASES_PATH) if runner_mode == "agent" else load_eval_cases()
+        suite_name = (
+            "Text-to-SQL \u771f\u5b9e Agent 18 \u8868\u8bc4\u6d4b"
+            if runner_mode == "agent"
+            else "Text-to-SQL \u751f\u6210\u8bc4\u6d4b"
+        )
+        suite_description = (
+            "\u901a\u8fc7\u771f\u5b9e\u591a\u667a\u80fd\u4f53\u94fe\u8def\u9a8c\u8bc1 schema\u3001RAG\u3001SQL \u751f\u6210\u3001\u5b89\u5168\u6267\u884c\u548c\u56fe\u8868\u7ed3\u679c\u3002"
+            if runner_mode == "agent"
+            else "\u6309\u7b80\u5355\u3001\u4e2d\u7b49\u3001\u590d\u6742\u95ee\u9898\u9a8c\u8bc1 SQL \u7247\u6bb5\u3001\u5b89\u5168\u7ea6\u675f\u548c\u56fe\u8868\u7c7b\u578b\u3002"
+        )
+    else:
+        cases = custom_cases
+        suite_name = f"\u4e0a\u4f20\u6d4b\u8bd5\u96c6\uff1a{dataset_name}"
+        suite_description = (
+            "\u4f7f\u7528\u4e0a\u4f20\u6d4b\u8bd5\u96c6\u9010\u6761\u8c03\u7528\u771f\u5b9e\u591a\u667a\u80fd\u4f53\u67e5\u6570\u94fe\u8def\u3002"
+            if runner_mode == "agent"
+            else "\u4f7f\u7528\u6d4b\u8bd5\u96c6\u7ba1\u7406\u4e2d\u4e0a\u4f20\u7684\u81ea\u5b9a\u4e49\u7528\u4f8b\u8fd0\u884c Text-to-SQL \u56de\u5f52\u8bc4\u6d4b\u3002"
+        )
+
+    if runner_mode == "agent":
+        report = await run_agent_text_to_sql_evals(
+            cases,
+            engine=get_engine(),
+            llm=get_llm_client(),
+        )
+    elif custom_cases is None:
         report = run_text_to_sql_evals()
-        cases = load_eval_cases()
-        suite_name = "Text-to-SQL 生成评测"
-        suite_description = "验证典型业务问题是否生成符合规则的 SQL 和图表类型。"
     else:
         results_tuple = tuple(evaluate_text_to_sql_case(case) for case in custom_cases)
-        passed = sum(1 for result in results_tuple if result.passed)
-        report = TextToSqlEvalReport(
-            total=len(results_tuple),
-            passed=passed,
-            failed=len(results_tuple) - passed,
-            results=results_tuple,
-        )
-        cases = custom_cases
-        suite_name = f"上传测试集：{dataset_name}"
-        suite_description = "使用测试集管理页面上传的自定义用例运行 Text-to-SQL 回归评测。"
+        report = build_text_to_sql_report(results_tuple)
+
     case_by_id = {case.id: case for case in cases}
     suite = _suite_summary(
         suite_id="text_to_sql",
@@ -226,6 +309,9 @@ def _run_text_to_sql_suite(
         passed=report.passed,
         failed=report.failed,
         duration_ms=_elapsed_ms(started),
+        difficulty_breakdown=_bucket_models(report.difficulty_breakdown),
+        rag_breakdown=_bucket_models(report.rag_breakdown),
+        ablation_breakdown=_bucket_models(report.ablation_breakdown),
     )
     results = [
         EvaluationCaseResult(
@@ -239,17 +325,20 @@ def _run_text_to_sql_suite(
                 [
                     *case_by_id[result.case_id].expected_sql_contains,
                     f"chart={case_by_id[result.case_id].expected_chart_type}",
+                    f"difficulty={case_by_id[result.case_id].difficulty}",
                 ]
             ),
-            actual=f"chart={result.chart_type}",
+            actual=f"runner={runner_mode}; chart={result.chart_type}",
             errors=list(result.errors),
             generated_sql=result.generated_sql,
             tags=list(case_by_id[result.case_id].tags),
+            difficulty=case_by_id[result.case_id].difficulty,
+            requires_rag=case_by_id[result.case_id].requires_rag,
+            ablation_tags=list(case_by_id[result.case_id].ablation_tags),
         )
         for result in report.results
     ]
     return suite, results
-
 
 def _run_metric_retrieval_suite() -> tuple[EvaluationSuiteSummary, list[EvaluationCaseResult]]:
     started = perf_counter()
@@ -407,6 +496,18 @@ def _case_from_uploaded_item(item: dict[str, Any], index: int) -> TextToSqlEvalC
         expected_columns=tuple(_list_value(item.get("expected_columns") or item.get("columns"))),
         expected_chart_type=_first_text(item, "expected_chart_type", "chart_type"),
         must_be_safe=_bool_value(item.get("must_be_safe"), default=True),
+        difficulty=_first_text(item, "difficulty", "sql_difficulty") or "medium",
+        requires_rag=_bool_value(
+            item.get("requires_rag", item.get("rag_required")),
+            default=False,
+        ),
+        ablation_tags=tuple(
+            _list_value(
+                item.get("ablation_tags")
+                or item.get("ablation")
+                or item.get("experiment_tags")
+            )
+        ),
     )
 
 
@@ -451,6 +552,9 @@ def _suite_summary(
     passed: int,
     failed: int,
     duration_ms: int,
+    difficulty_breakdown: list[EvaluationBucketSummary] | None = None,
+    rag_breakdown: list[EvaluationBucketSummary] | None = None,
+    ablation_breakdown: list[EvaluationBucketSummary] | None = None,
 ) -> EvaluationSuiteSummary:
     pass_rate = round(passed / total, 4) if total else 0.0
     return EvaluationSuiteSummary(
@@ -463,10 +567,26 @@ def _suite_summary(
         pass_rate=pass_rate,
         duration_ms=duration_ms,
         status="ok" if failed == 0 else "warning",
+        difficulty_breakdown=difficulty_breakdown or [],
+        rag_breakdown=rag_breakdown or [],
+        ablation_breakdown=ablation_breakdown or [],
     )
 
 
-def _build_kpis(suites: list[EvaluationSuiteSummary], duration_ms: int) -> list[EvaluationKpi]:
+def _bucket_models(items: tuple[object, ...]) -> list[EvaluationBucketSummary]:
+    return [
+        EvaluationBucketSummary(
+            name=str(item.name),
+            total=int(item.total),
+            passed=int(item.passed),
+            failed=int(item.failed),
+            pass_rate=float(item.pass_rate),
+        )
+        for item in items
+    ]
+
+
+def _build_kpis(suites: list[EvaluationSuiteSummary], duration_ms: int, runner_mode: str) -> list[EvaluationKpi]:
     total = sum(suite.total for suite in suites)
     passed = sum(suite.passed for suite in suites)
     failed = sum(suite.failed for suite in suites)
@@ -507,7 +627,11 @@ def _build_kpis(suites: list[EvaluationSuiteSummary], duration_ms: int) -> list[
             id="latency",
             label="本次耗时",
             value=f"{duration_ms}ms",
-            description="内置离线评测运行耗时，不调用真实大模型。",
+            description=(
+                "真实多智能体评测运行耗时。"
+                if runner_mode == "agent"
+                else "离线回归评测运行耗时。"
+            ),
             status="ok",
         ),
     ]

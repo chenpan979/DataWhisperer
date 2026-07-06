@@ -18,7 +18,7 @@ from app.rag.metric_retriever import MetricRetrievalResult
 from app.tools.agent_model_router import AgentModelRouter
 from app.tools.insight_tool import GeneratedInsight
 from app.tools.security_policy import QuerySecurityPolicy
-from app.tools.sql_tool import GeneratedSQL
+from app.agents.sql_generation import GeneratedSQL
 
 
 @dataclass(frozen=True)

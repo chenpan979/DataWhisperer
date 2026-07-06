@@ -1,21 +1,19 @@
-数据库结构：
-
+Database schema:
 {schema_prompt}
 
-相关业务指标口径：
-
+Business metric context:
 {metric_context}
 
-用户问题：
-
+User question:
 {question}
 
-原始 SQL：
-
+Failed SQL:
 {failed_sql}
 
-失败原因：
-
+Failure reason:
 {error_message}
 
-请修复 SQL，并只返回严格 JSON。
+Structured correction plan:
+{correction_plan}
+
+Repair the SQL strictly according to the structured correction plan, then return strict JSON only.

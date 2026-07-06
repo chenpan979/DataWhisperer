@@ -1,72 +1,2536 @@
-[
-  {
-    "id": "monthly_sales_trend",
-    "question": "查询最近 6 个月每月销售额趋势",
-    "tags": ["sales", "trend", "line"],
-    "expected_sql_contains": [
-      "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
-      "SUM(oi.quantity * oi.unit_price)",
-      "GROUP BY DATE_FORMAT(o.order_date, '%Y-%m')"
-    ],
-    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
-    "expected_columns": ["month", "sales_amount"],
-    "expected_chart_type": "line",
-    "must_be_safe": true
-  },
-  {
-    "id": "category_sales_share",
-    "question": "查询各商品品类销售额占比",
-    "tags": ["sales", "category", "pie"],
-    "expected_sql_contains": [
-      "p.category",
-      "SUM(oi.quantity * oi.unit_price)",
-      "GROUP BY p.category"
-    ],
-    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
-    "expected_columns": ["category", "sales_amount"],
-    "expected_chart_type": "pie",
-    "must_be_safe": true
-  },
-  {
-    "id": "region_avg_order_value",
-    "question": "哪个地区客单价最高",
-    "tags": ["region", "aov", "bar"],
-    "expected_sql_contains": [
-      "r.region_name",
-      "COUNT(DISTINCT o.order_id)",
-      "avg_order_value"
-    ],
-    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
-    "expected_columns": ["region_name", "avg_order_value"],
-    "expected_chart_type": "bar",
-    "must_be_safe": true
-  },
-  {
-    "id": "product_sales_decline",
-    "question": "找出销售额下滑最明显的商品",
-    "tags": ["product", "decline", "bar"],
-    "expected_sql_contains": [
-      "previous_month",
-      "last_month",
-      "amount_change"
-    ],
-    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
-    "expected_columns": ["product_name", "previous_amount", "last_amount", "amount_change"],
-    "expected_chart_type": "bar",
-    "must_be_safe": true
-  },
-  {
-    "id": "region_order_count",
-    "question": "查询各地区订单数量",
-    "tags": ["region", "orders", "bar"],
-    "expected_sql_contains": [
-      "r.region_name",
-      "COUNT(DISTINCT o.order_id) AS order_count",
-      "GROUP BY r.region_name"
-    ],
-    "forbidden_sql_contains": ["INSERT", "UPDATE", "DELETE", "DROP"],
-    "expected_columns": ["region_name", "order_count"],
-    "expected_chart_type": "bar",
-    "must_be_safe": true
-  }
-]
+{
+  "version": "v4.2.1",
+  "description": "DataWhisperer 离线稳定 Text-to-SQL 回归集，覆盖当前 fallback 能稳定生成的 7 类问题。",
+  "cases": [
+    {
+      "id": "offline_monthly_sales_trend_01",
+      "question": "查询最近 6 个月每月销售额趋势",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_02",
+      "question": "最近 6 个月的月度销售额变化如何",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_03",
+      "question": "帮我看最近 6 个月每月销售额走势",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_04",
+      "question": "统计最近 6 个月按月销售额趋势",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_05",
+      "question": "最近 6 个月销售额按月份怎么变化",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_06",
+      "question": "查询最近 6 个月销售额月度趋势",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_07",
+      "question": "最近 6 个月每个月销售金额是多少",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_08",
+      "question": "看一下最近 6 个月月销售额折线趋势",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_09",
+      "question": "最近 6 个月销售额有没有持续增长",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_monthly_sales_trend_10",
+      "question": "统计最近 6 个月每月销售额并按月份排序",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "time_series",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "DATE_FORMAT(o.order_date, '%Y-%m') AS month",
+        "SUM(oi.quantity * oi.unit_price)",
+        "INTERVAL 6 MONTH",
+        "GROUP BY DATE_FORMAT"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "month",
+        "sales_amount"
+      ],
+      "expected_chart_type": "line",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_01",
+      "question": "查询各商品品类销售额占比",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_02",
+      "question": "各商品品类的销售额占比是多少",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_03",
+      "question": "帮我看商品品类销售额占比",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_04",
+      "question": "统计不同商品品类销售额占比",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_05",
+      "question": "各品类销售额占比情况",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_06",
+      "question": "查询商品品类贡献占比",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_07",
+      "question": "看一下各品类销售金额占比",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_08",
+      "question": "不同商品品类销售占比如何",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_09",
+      "question": "统计商品品类销售额并计算占比",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_category_sales_share_10",
+      "question": "商品品类销售额占比排名",
+      "difficulty": "simple",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "products",
+        "order_items",
+        "category",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "p.category",
+        "SUM(oi.quantity * oi.unit_price)",
+        "GROUP BY p.category"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "category",
+        "sales_amount"
+      ],
+      "expected_chart_type": "pie",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_01",
+      "question": "哪个地区客单价最高",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_02",
+      "question": "查询各地区客单价排名",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_03",
+      "question": "帮我比较不同地区客单价",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_04",
+      "question": "各地区客单价从高到低排序",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_05",
+      "question": "统计地区客单价表现",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_06",
+      "question": "哪个地区客单价也就是平均每单金额最高",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_07",
+      "question": "看一下地区维度的客单价",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_08",
+      "question": "查询地区客单价 Top 排名",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_09",
+      "question": "比较各地区订单客单价",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_avg_order_value_10",
+      "question": "不同地区客单价差异如何",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "schema_linking"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "avg_order_value",
+        "COUNT(DISTINCT o.order_id)",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "avg_order_value"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_01",
+      "question": "找出销售额下滑最明显的商品",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_02",
+      "question": "哪些商品销售额下滑最明显",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_03",
+      "question": "帮我看最近销售额下滑最多的商品",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_04",
+      "question": "查询销售额下滑幅度最大的商品",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_05",
+      "question": "找出环比销售额下滑的商品",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_06",
+      "question": "最近一个月销售额下滑最严重的商品有哪些",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_07",
+      "question": "对比最近两个月找出销售额下滑商品",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_08",
+      "question": "商品销售额下滑排行榜",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_09",
+      "question": "看一下哪些商品销售额出现明显下滑",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_product_sales_decline_10",
+      "question": "统计销售额下滑最突出的商品",
+      "difficulty": "medium",
+      "requires_rag": true,
+      "ablation_tags": [
+        "metric_rag",
+        "sql_of_thought",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH last_month AS",
+        "WITH last_month AS",
+        "previous_month",
+        "amount_change"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "previous_amount",
+        "last_amount",
+        "amount_change"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_01",
+      "question": "查询各地区订单数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_02",
+      "question": "统计每个地区订单数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_03",
+      "question": "各地区订单数量是多少",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_04",
+      "question": "帮我看地区订单数量排名",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_05",
+      "question": "按地区统计订单数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_06",
+      "question": "不同地区订单数量对比",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_07",
+      "question": "查询地区维度订单数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_08",
+      "question": "统计各地区订单数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_09",
+      "question": "各地区订单数量从高到低排序",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_region_order_count_10",
+      "question": "看一下订单数量最多的地区",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "orders",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "COUNT(DISTINCT o.order_id) AS order_count",
+        "JOIN regions r",
+        "GROUP BY r.region_name"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "region_name",
+        "order_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_01",
+      "question": "查询华东地区销量前三的商品及其环比增长",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_02",
+      "question": "华东地区销量前三商品环比增长是多少",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_03",
+      "question": "帮我看华东销量前三商品和上一季度对比",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_04",
+      "question": "统计华东地区销量 Top3 商品及环比增长",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_05",
+      "question": "华东地区最近销量前三的商品表现如何",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_06",
+      "question": "查询华东销量前三商品的增长率",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_07",
+      "question": "华东地区商品销量前三及环比",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_08",
+      "question": "找出华东地区销量前三商品并计算环比增长",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_09",
+      "question": "华东销量 Top3 商品与上一周期相比如何",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_east_top_growth_10",
+      "question": "分析华东地区销量最高的前三个商品及增长",
+      "difficulty": "complex",
+      "requires_rag": true,
+      "ablation_tags": [
+        "schema_linking",
+        "metric_rag",
+        "sql_of_thought"
+      ],
+      "tags": [
+        "orders",
+        "order_items",
+        "products",
+        "regions",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "WITH current_q AS",
+        "previous_q",
+        "growth_rate_percent",
+        "East China"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "product_name",
+        "current_quantity",
+        "previous_quantity",
+        "growth_rate_percent"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_01",
+      "question": "按行业统计客户数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_02",
+      "question": "查询各行业客户数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_03",
+      "question": "各行业客户数量是多少",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_04",
+      "question": "帮我看行业客户数量分布",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_05",
+      "question": "统计不同行业客户数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_06",
+      "question": "行业维度客户数量排名",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_07",
+      "question": "查询客户所属行业数量",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_08",
+      "question": "各行业客户数量从高到低排序",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_09",
+      "question": "看一下哪个行业客户数量最多",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    },
+    {
+      "id": "offline_industry_customer_count_10",
+      "question": "统计行业客户数量并排序",
+      "difficulty": "simple",
+      "requires_rag": false,
+      "ablation_tags": [
+        "schema_linking",
+        "chart_recommendation"
+      ],
+      "tags": [
+        "customers",
+        "industry",
+        "fallback"
+      ],
+      "expected_sql_contains": [
+        "c.industry",
+        "COUNT(DISTINCT c.customer_id) AS customer_count",
+        "GROUP BY c.industry"
+      ],
+      "forbidden_sql_contains": [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+      ],
+      "expected_columns": [
+        "industry",
+        "customer_count"
+      ],
+      "expected_chart_type": "bar",
+      "must_be_safe": true
+    }
+  ]
+}

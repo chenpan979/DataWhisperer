@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -56,13 +57,14 @@ def test_console_static_fragments_are_served() -> None:
     index_response = client.get("/")
     assert index_response.status_code == 200
     assert "/static/assets/bootstrap.js" in index_response.text
-    assert "v=4.1.2" in index_response.text
     assert "/static/partials/icon-sprite.html" in index_response.text
     assert "/static/partials/auth-shell.html" in index_response.text
     assert "/static/partials/app-shell.html" in index_response.text
 
     bootstrap_js = Path("static/assets/bootstrap.js").read_text(encoding="utf-8")
-    assert 'const appVersion = "4.1.2"' in bootstrap_js
+    match = re.search(r'const appVersion = "([^"]+)";', bootstrap_js)
+    assert match is not None
+    assert f"v={match.group(1)}" in index_response.text
 
     for path in [
         "/static/partials/icon-sprite.html",
