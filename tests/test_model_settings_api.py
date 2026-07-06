@@ -57,7 +57,7 @@ def test_model_settings_can_be_loaded_saved_tested_and_bound(
     payload = get_response.json()
     assert payload["provider"]["name"] == "DashScope"
     assert payload["profile"]["chat_model"] == "qwen-plus"
-    assert len(payload["agent_bindings"]) == 4
+    assert len(payload["agent_bindings"]) == 7
 
     update_response = client.patch(
         "/api/model-settings/default",
@@ -105,6 +105,9 @@ def test_model_settings_can_be_loaded_saved_tested_and_bound(
     bindings = bindings_response.json()
     assert {binding["agent_key"] for binding in bindings} == {
         "sql_agent",
+        "query_planning_agent",
+        "sql_correction_plan_agent",
+        "sql_repair_agent",
         "insight_agent",
         "chart_agent",
         "rag_agent",
@@ -142,7 +145,7 @@ def test_model_settings_can_be_loaded_saved_tested_and_bound(
         assert provider is not None
         assert provider.credential.encrypted_api_key.startswith("local-demo:")
         assert repository.get_default_profile(workspace_id=1).chat_model == "qwen-max"
-        assert len(repository.list_bindings(workspace_id=1)) == 4
+        assert len(repository.list_bindings(workspace_id=1)) == 7
 
 
 def test_model_settings_backfills_env_api_key_for_existing_provider(

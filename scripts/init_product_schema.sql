@@ -826,6 +826,9 @@ JOIN model_providers mp ON mp.workspace_id = w.id AND mp.name = 'DashScope'
 JOIN model_profiles mpf ON mpf.provider_id = mp.id AND mpf.name = '默认模型配置'
 JOIN (
     SELECT 'sql_agent' AS agent_key, 'sql_generation' AS capability
+    UNION ALL SELECT 'query_planning_agent', 'query_planning'
+    UNION ALL SELECT 'sql_correction_plan_agent', 'sql_correction_plan'
+    UNION ALL SELECT 'sql_repair_agent', 'sql_repair'
     UNION ALL SELECT 'insight_agent', 'insight_summary'
     UNION ALL SELECT 'chart_agent', 'chart_recommendation'
     UNION ALL SELECT 'rag_agent', 'embedding'

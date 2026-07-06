@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V4.2.3：真实 Agent 评测与进度可视化版本**。
+当前项目已经更新到 **V4.3.1：三轮引导式 SQL 修复 Agent 版本**。
 
 版本入口：
 
@@ -94,8 +94,10 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v4.2.1`：重建 Text-to-SQL 评测数据集，离线集扩展到 70 条稳定回归用例，新增 18 表真实 Agent 核心集，并生成 100/240/360 条产品级 benchmark，支持后续 RAG、Agent 和消融实验。
 - `v4.2.2`：测试集管理新增内置 benchmark 同步能力，页面刷新时会把仓库内最新 70/18/100/240/360 条评测集同步到已上传测试集列表，同时保留用户自定义测试集。
 - `v4.2.3`：评测中心新增运行进度面板，展示当前阶段、进度条、已耗时和评测数据源，避免真实 Agent 评测耗时较长时用户误以为页面卡住。
+- `v4.3.0`：将 QueryPlanningAgent 升级为模型驱动的 SQL-of-Thought 规划 Agent，SQLGenerationAgent 改为模型优先、本地规则兜底，并在模型配置中补齐 `query_planning_agent` 绑定。
+- `v4.3.1`：将 SQLCorrectionPlanAgent 和 SQLRepairAgent 接入独立模型绑定，SQL 执行失败时采用“错误分类与结构化修复计划 -> 按计划重写 -> 安全执行”的最多 3 轮修复闭环。
 
-项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充 PromptOps 和 SQL 修复，V3 把产品化界面、RAG 知识库、多租户产品库、系统设置和会话持久化补齐，V4 开始升级为 SQL-of-Thought 多智能体架构。当前 V4.2.3 已经支持真实 Agent 评测、内置 70/18/100/240/360 条测试集同步和评测运行进度展示，后续会继续做 Agent 消融实验、多库路由和 MCP 工具化。
+项目第一阶段重点不是堆概念，而是先做出一个能真实跑通的 Text-to-SQL 数据分析闭环。V2 补充 PromptOps 和 SQL 修复，V3 把产品化界面、RAG 知识库、多租户产品库、系统设置和会话持久化补齐，V4 开始升级为 SQL-of-Thought 多智能体架构。当前 V4.3.1 已经支持模型驱动查询规划、模型优先 SQL 生成、三轮引导式 SQL 修复、真实 Agent 评测、内置 70/18/100/240/360 条测试集同步和评测运行进度展示，后续会继续做 Agent 消融实验、多库路由和 MCP 工具化。
 
 ## 项目亮点
 
@@ -108,13 +110,14 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - LLM 使用 OpenAI-compatible 封装，默认适配 DashScope/Qwen，也可以切换 OpenAI、DeepSeek 等兼容服务。
 - 没有配置大模型 API Key 时，部分典型问题会走演示兜底规则，方便本地快速验证。
 - V2 引入 PromptOps，将 SQL 生成、SQL 修复、分析总结、图表推荐 prompt 拆成版本化模板。
-- SQL 校验失败或数据库执行失败时，系统最多自动修复 1 次，并记录 `repair_count`。
+- SQL 校验失败或数据库执行失败时，系统最多自动修复 3 次，并记录 `repair_count`。
 - 内置基础 Text-to-SQL 评测集，可快速检查 SQL 安全、关键 SQL 片段和图表推荐是否退化。
 - V3 引入本地指标口径库，支持 GMV、销售额、客单价、订单数、复购率等业务指标检索。
 - SQL 生成和 SQL 修复 prompt 会注入检索到的指标口径，让模型按业务定义生成 SQL。
 - 返回 `retrieved_metrics`，用于追踪本次请求检索到的业务指标口径。
 - V4 返回的 `trace_steps` 保持旧协议名称，同时在 detail 中标明对应 Agent，方便前端兼容和后端继续拆分。
 - V4.1 将系统设置里的 Agent 模型绑定接入运行时，SQL 生成、SQL 修复和分析总结可按 Profile 独立切换模型。
+- V4.3 将查询规划也接入模型调用链路，QueryPlanningAgent 会先生成 SQL-of-Thought 计划，SQLGenerationAgent 再基于计划生成 SQL。
 - V4.1.1 将多智能体实现拆成独立模块，`app/agents` 是真实运行目录，`app/agent` 只是旧导入兼容层。
 - V4.1.2 在对话结果顶部新增 Agent 进度下拉，用户可以看到当前执行到 SchemaLinkingAgent、SQLGenerationAgent、InsightAgent 等哪一步。
 - V3.1 使用混合检索策略：关键词/别名精确匹配 + 本地 n-gram 语义相似度。
@@ -246,7 +249,8 @@ flowchart TD
     S8 --> S9["InsightAgent<br/>生成业务结论"]
     S9 --> R["统一回答<br/>SQL / 表格 / 图表 / 结论 / Agent 轨迹"]
 
-    ROUTER["AgentModelRouter<br/>工作空间 Agent 模型绑定"] --> S4
+    ROUTER["AgentModelRouter<br/>工作空间 Agent 模型绑定"] --> S3
+    ROUTER --> S4
     ROUTER --> S5
     ROUTER --> S6
     ROUTER --> S9
@@ -269,6 +273,14 @@ flowchart LR
     KPIS --> UI["评测中心<br/>进度面板、趋势、用例明细、错误案例"]
 ```
 
+### Agent 分工
+
+V4.3.1 之后，DataWhisperer 不是简单把函数改名叫 Agent，而是按职责分成两类：
+
+- **模型型 Agent**：`QueryPlanningAgent`、`SQLGenerationAgent`、`SQLCorrectionPlanAgent`、`SQLRepairAgent`、`InsightAgent`。这些节点需要理解问题、规划查询、生成 SQL、分析错误、按计划重写 SQL 或总结业务结论，会通过 `AgentModelRouter` 调用当前工作空间绑定的大模型；其中 SQL 纠错采用“错误分类与结构化修复计划 -> 按计划重写 -> 安全执行”的最多 3 轮循环。
+- **工具型 / 混合型 Agent**：`SchemaLinkingAgent`、`KnowledgeRetrievalAgent`、`ValidationExecutionAgent`、`ChartAgent`。这些节点更强调确定性能力，例如读取 schema、检索 Milvus/RAG、执行安全校验、查询数据库和生成 ECharts 配置。
+
+这样设计的原因是：大模型负责不确定的理解和推理，工具负责确定的安全边界和工程执行。后续做消融实验时，可以清楚比较有/无 RAG、有/无查询规划、有/无 SQL 修复、多 Agent/单链路的效果差异。
 核心设计思想：
 
 - API 层保持轻量，只负责请求、响应和异常转换。
@@ -500,11 +512,11 @@ uvicorn app.main:app --reload --port 8081
 
 ### `GET /api/model-settings/agent-bindings`
 
-读取 SQL 生成、分析总结、图表推荐、RAG 向量化等 Agent 能力当前绑定的模型 Profile。
+读取查询规划、SQL 生成、SQL 纠错规划、SQL 修复、分析总结、图表推荐、RAG 向量化等 Agent 能力当前绑定的模型 Profile。
 
 ### `PATCH /api/model-settings/agent-bindings`
 
-批量更新 Agent 模型绑定。V4.1 已经把 SQL 生成、SQL 修复和分析总结接入运行时路由，后续还可以继续扩展到 RAG、图表和多库路由 Agent。
+批量更新 Agent 模型绑定。V4.3 已经把查询规划、SQL 生成、SQL 纠错规划、SQL 修复和分析总结接入运行时路由，后续还可以继续扩展到 RAG、图表和多库路由 Agent。
 
 ### `GET /api/security-policies/default`
 
@@ -727,7 +739,7 @@ python -m app.evals.metric_retrieval
 
 可以用下面这段作为 1 分钟项目介绍：
 
-> DataWhisperer 是我做的一个面向业务人员的自然语言数据分析智能体。用户用中文提问后，系统会读取当前工作空间默认 MySQL 数据源的 Schema，检索多租户隔离的 RAG 知识库，再通过 SQL-of-Thought 多智能体链路完成表结构理解、知识检索、查询规划、SQL 生成、引导式 SQL 纠错、安全执行、图表推荐和业务总结。V3 已经补齐登录、多租户产品库、系统设置、会话持久化、3D Schema 图谱和知识库上传同步；V4 把查数链路拆成多个 Agent，并接入 Agent 模型路由；V4.2 进一步加入真实 Agent 评测、产品级测试集和运行进度展示，让项目从“能演示”升级成“可治理、可追踪、可评测、可继续做消融实验”的大模型数据分析产品。
+> DataWhisperer 是我做的一个面向业务人员的自然语言数据分析智能体。用户用中文提问后，系统会读取当前工作空间默认 MySQL 数据源的 Schema，检索多租户隔离的 RAG 知识库，再通过 SQL-of-Thought 多智能体链路完成表结构理解、知识检索、查询规划、SQL 生成、引导式 SQL 纠错、安全执行、图表推荐和业务总结。V3 已经补齐登录、多租户产品库、系统设置、会话持久化、3D Schema 图谱和知识库上传同步；V4 把查数链路拆成多个 Agent，并接入 Agent 模型路由；V4.3 进一步把查询规划、SQL 生成和 SQL 修复改成模型优先且可治理的链路，并加入真实 Agent 评测、产品级测试集和运行进度展示，让项目从“能演示”升级成“可治理、可追踪、可评测、可继续做消融实验”的大模型数据分析产品。
 
 更多讲解内容见：[docs/interview-guide.md](docs/interview-guide.md)。
 
@@ -792,7 +804,8 @@ uvicorn app.main:app --reload --port 8081
 - V4：SQL-of-Thought 多智能体底座，拆分 Schema Linking、知识检索、查询规划、SQL 生成、SQL 纠错、安全执行、图表和结论 Agent。
 - V4.1：Agent 模型路由接入，系统设置可以为不同 Agent 绑定不同模型 Profile。
 - V4.2：引入引导式 SQL 纠错、真实 Agent 评测 runner、产品级 benchmark 和评测进度展示。
-- V4.3：评测增强，按简单/中等/复杂 SQL 统计准确率，并做 RAG/无 RAG、修复/无修复、多智能体/单链路消融实验。
-- V4.4：复杂查询增强，重点覆盖多表 Join、时间窗口、环比同比、TopN、漏斗、留存和异常归因。
+- V4.3：模型驱动查询规划与 SQL 生成链路，QueryPlanningAgent 先生成 SQL-of-Thought 计划，SQLGenerationAgent 模型优先生成 SQL，SQL 纠错采用最多 3 轮引导式修复。
+- V4.4：评测增强，按简单/中等/复杂 SQL 统计准确率，并做 RAG/无 RAG、修复/无修复、多智能体/单链路消融实验。
+- V4.5：复杂查询增强，重点覆盖多表 Join、时间窗口、环比同比、TopN、漏斗、留存和异常归因。
 - V5：MCP 工具化，把数据库查询、图表生成、文件导出、知识库检索包装成可复用工具。
 - V6：多库路由与企业级权限边界，支持跨库选择、数据源权限、审计追踪和更完整的 Agent 协作。

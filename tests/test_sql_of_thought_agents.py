@@ -92,7 +92,7 @@ async def test_sql_of_thought_plan_is_injected_into_sql_generation(
     orchestrator = sql_of_thought.DataAnalysisOrchestrator(engine=object(), llm=llm)  # type: ignore[arg-type]
     response = await orchestrator.run(QueryRequest(question="Show products inventory status", max_rows=20))
 
-    prompt_text = "\n".join(message["content"] for message in llm.json_messages[0])
+    prompt_text = "\n".join(message["content"] for message in llm.json_messages[-1])
     trace_names = [step.name for step in response.trace_steps]
 
     assert "SQL-of-Thought" in prompt_text

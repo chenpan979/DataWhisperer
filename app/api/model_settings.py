@@ -36,6 +36,24 @@ DEFAULT_AGENT_BINDINGS = (
         "capability_label": "自然语言转 SQL",
     },
     {
+        "agent_key": "query_planning_agent",
+        "agent_label": "查询规划 Agent",
+        "capability": "query_planning",
+        "capability_label": "SQL-of-Thought 计划",
+    },
+    {
+        "agent_key": "sql_correction_plan_agent",
+        "agent_label": "SQL 纠错规划 Agent",
+        "capability": "sql_correction_plan",
+        "capability_label": "错误分类与修复计划",
+    },
+    {
+        "agent_key": "sql_repair_agent",
+        "agent_label": "SQL 修复 Agent",
+        "capability": "sql_repair",
+        "capability_label": "按计划重写 SQL",
+    },
+    {
         "agent_key": "insight_agent",
         "agent_label": "分析总结 Agent",
         "capability": "insight_summary",

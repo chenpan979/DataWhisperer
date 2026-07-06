@@ -3,6 +3,7 @@ import pytest
 from app.tools.insight_tool import generate_insight
 from app.agents.sql_repair import repair_sql
 from app.agents.sql_generation import generate_sql
+from app.agents.query_planning import generate_query_plan
 
 
 class FakeJsonLLM:
@@ -13,6 +14,24 @@ class FakeJsonLLM:
         self.messages = messages
         return {"sql": "SELECT 1 AS value", "explanation": "查询固定值。"}
 
+
+
+class FakePlanLLM:
+    def __init__(self) -> None:
+        self.messages: list[dict[str, str]] = []
+
+    async def complete_json(self, messages: list[dict[str, str]]) -> dict[str, object]:
+        self.messages = messages
+        return {
+            "objective": "分析月度销售额趋势",
+            "candidate_tables": ["orders", "order_items"],
+            "steps": [
+                "按月份过滤订单日期。",
+                "关联订单和订单明细并汇总销售额。",
+                "按月份升序排序。",
+            ],
+            "checks": ["只允许 SELECT/WITH。", "字段必须来自 schema。"],
+        }
 
 class FakeTextLLM:
     def __init__(self) -> None:
@@ -42,6 +61,44 @@ async def test_generate_sql_uses_versioned_prompt_template() -> None:
     assert "Table orders(order_id, order_date)" in llm.messages[1]["content"]
     assert "销售额 = SUM(order_items.quantity * order_items.unit_price)" in llm.messages[1]["content"]
 
+
+
+@pytest.mark.asyncio
+async def test_generate_query_plan_uses_versioned_prompt_template() -> None:
+    llm = FakePlanLLM()
+
+    generated = await generate_query_plan(
+        question="最近 6 个月每月销售额趋势",
+        schema={"tables": [{"name": "orders"}, {"name": "order_items"}]},
+        schema_prompt="Table orders(order_id, order_date)\nTable order_items(order_id, quantity)",
+        retrieval_context="销售额 = SUM(order_items.quantity * order_items.unit_price)",
+        llm=llm,
+    )
+
+    assert generated.plan.objective == "分析月度销售额趋势"
+    assert generated.plan.candidate_tables == ("orders", "order_items")
+    assert generated.prompt_id == "query_planning"
+    assert generated.prompt_version == "v1"
+    assert llm.messages[0]["role"] == "system"
+    assert "不要生成 SQL" in llm.messages[0]["content"]
+    assert "Table orders(order_id, order_date)" in llm.messages[1]["content"]
+    assert "销售额 = SUM(order_items.quantity * order_items.unit_price)" in llm.messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_demo_question_still_calls_sql_generation_model_first() -> None:
+    llm = FakeJsonLLM()
+
+    generated = await generate_sql(
+        question="查询最近 6 个月每月销售额趋势",
+        schema_prompt="Table orders(order_id, order_date)",
+        llm=llm,
+        metric_context="销售额 = SUM(order_items.quantity * order_items.unit_price)",
+    )
+
+    assert generated.sql == "SELECT 1 AS value"
+    assert generated.used_fallback is False
+    assert llm.messages
 
 @pytest.mark.asyncio
 async def test_repair_sql_uses_versioned_prompt_template() -> None:

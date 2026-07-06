@@ -48,10 +48,6 @@ async def generate_sql(
 ) -> GeneratedSQL:
     """根据自然语言问题和 schema 上下文生成 MySQL SQL。"""
 
-    deterministic_sql = try_fallback_sql(question)
-    if deterministic_sql:
-        return deterministic_sql
-
     registry = prompt_registry or get_prompt_registry()
     rendered_prompt = registry.render_messages(
         "sql_generation",
@@ -79,8 +75,7 @@ async def generate_sql(
 def try_fallback_sql(question: str) -> GeneratedSQL | None:
     """为已知演示问题返回稳定 SQL。
 
-    示例问题是项目演示入口，应该稳定可控；自由提问才优先交给大模型。
-    这种设计可以避免模型偶尔把固定 demo 问偏，影响演示体验。
+    示例问题只作为大模型不可用时的兜底路径，避免演示和离线测试完全失败。
     """
 
     q = question.lower()
