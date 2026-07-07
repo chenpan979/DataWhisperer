@@ -397,14 +397,17 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
     workspace_id BIGINT UNSIGNED NOT NULL,
     name VARCHAR(128) NOT NULL,
     description VARCHAR(512) NULL,
+    scope VARCHAR(32) NOT NULL DEFAULT 'tenant',
     status VARCHAR(32) NOT NULL DEFAULT 'active',
     is_default TINYINT(1) NOT NULL DEFAULT 1,
+    readonly TINYINT(1) NOT NULL DEFAULT 0,
     created_by BIGINT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_knowledge_bases_workspace_name (workspace_id, name),
     KEY idx_knowledge_bases_tenant_workspace (tenant_id, workspace_id),
     KEY idx_knowledge_bases_workspace_default (workspace_id, is_default),
+    KEY idx_knowledge_bases_scope (scope, status),
     CONSTRAINT fk_knowledge_bases_tenant
       FOREIGN KEY (tenant_id) REFERENCES tenants(id)
       ON DELETE CASCADE,
@@ -428,6 +431,8 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
     extension VARCHAR(32) NOT NULL,
     size_bytes BIGINT UNSIGNED NOT NULL,
     previewable TINYINT(1) NOT NULL DEFAULT 1,
+    source_scope VARCHAR(32) NOT NULL DEFAULT 'tenant',
+    readonly TINYINT(1) NOT NULL DEFAULT 0,
     sync_status VARCHAR(32) NULL,
     sync_message VARCHAR(1024) NULL,
     sync_collection VARCHAR(128) NULL,
@@ -439,6 +444,7 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
     UNIQUE KEY uk_knowledge_documents_workspace_file (workspace_id, file_id),
     KEY idx_knowledge_documents_base (knowledge_base_id, created_at),
     KEY idx_knowledge_documents_sync (workspace_id, sync_status),
+    KEY idx_knowledge_documents_scope (source_scope, sync_status),
     CONSTRAINT fk_knowledge_documents_tenant
       FOREIGN KEY (tenant_id) REFERENCES tenants(id)
       ON DELETE CASCADE,
@@ -460,6 +466,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     workspace_id BIGINT UNSIGNED NOT NULL,
     knowledge_base_id BIGINT UNSIGNED NOT NULL,
     document_id BIGINT UNSIGNED NOT NULL,
+    source_scope VARCHAR(32) NOT NULL DEFAULT 'tenant',
     chunk_id VARCHAR(128) NOT NULL,
     chunk_index INT NOT NULL,
     content TEXT NOT NULL,
@@ -471,6 +478,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     UNIQUE KEY uk_knowledge_chunks_chunk_id (chunk_id),
     KEY idx_knowledge_chunks_base (knowledge_base_id, chunk_index),
     KEY idx_knowledge_chunks_workspace (tenant_id, workspace_id),
+    KEY idx_knowledge_chunks_scope (source_scope, tenant_id, workspace_id),
     CONSTRAINT fk_knowledge_chunks_tenant
       FOREIGN KEY (tenant_id) REFERENCES tenants(id)
       ON DELETE CASCADE,
@@ -843,8 +851,10 @@ INSERT INTO knowledge_bases (
     workspace_id,
     name,
     description,
+    scope,
     status,
     is_default,
+    readonly,
     created_by
 )
 SELECT
@@ -852,8 +862,10 @@ SELECT
     w.id,
     '默认知识库',
     '当前工作空间默认的 RAG 业务知识库。',
+    'tenant',
     'active',
     1,
+    0,
     w.created_by
 FROM workspaces w
 LEFT JOIN knowledge_bases kb ON kb.workspace_id = w.id AND kb.is_default = 1

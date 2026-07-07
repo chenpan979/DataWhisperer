@@ -7,13 +7,16 @@ from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
+from app.api.auth import AuthContext, require_auth_context
 from app.core.database import get_engine
 from app.core.llm import get_llm_client
+from app.core.product_database import get_product_session
 from app.evals.agent_text_to_sql import run_agent_text_to_sql_evals
 from app.evals.metric_retrieval import load_metric_retrieval_cases, run_metric_retrieval_evals
 from app.evals.text_to_sql import (
@@ -24,6 +27,8 @@ from app.evals.text_to_sql import (
     run_text_to_sql_evals,
 )
 from app.models.files import FilePreview, ManagedFile, ManagedFileList
+from app.rag.document_retriever import RagKnowledgeScope, get_rag_document_retriever
+from app.repositories.product import KnowledgeRepository
 from app.models.evaluations import (
     EvaluationBucketSummary,
     EvaluationCaseResult,
@@ -199,8 +204,43 @@ def _normalize_runner_mode(value: str | None) -> str:
         raise HTTPException(status_code=400, detail="runner_mode must be offline or agent.")
     return mode
 
+
+def _resolve_optional_auth_context(*, authorization: str | None, session: Session) -> AuthContext | None:
+    """解析可选登录上下文。
+
+    评测接口既支持公开 demo 运行，也支持登录后读取当前租户的 Milvus RAG
+    知识库。没有登录态时不抛错，只把真实 RAG 命中率计为 0。
+    """
+
+    if not authorization:
+        return None
+    return require_auth_context(authorization=authorization, session=session)
+
+
+def _resolve_rag_source_cases(
+    *,
+    custom_cases: list[TextToSqlEvalCase] | None,
+    runner_mode: str,
+) -> list[TextToSqlEvalCase]:
+    """选择用于 RAG 命中评测的用例。
+
+    RAG 命中率不再复用“指标口径检索”结果，而是从 Text-to-SQL 用例里挑出
+    `requires_rag=true` 的问题，再到当前租户知识库里做真实检索。
+    """
+
+    if custom_cases is not None:
+        return custom_cases
+    if runner_mode == "agent":
+        return load_eval_cases(AGENT_EVAL_CASES_PATH)
+    return load_eval_cases()
+
+
 @router.post("/run", response_model=EvaluationRunResponse)
-async def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunResponse:
+async def run_evaluations(
+    request: EvaluationRunRequest,
+    authorization: Annotated[str | None, Header()] = None,
+    session: Session = Depends(get_product_session),
+) -> EvaluationRunResponse:
     """运行评测套件并返回前端展示所需的质量报告。
 
     默认使用项目内置评测集。当前端传入 dataset_file_id 时，Text-to-SQL
@@ -222,6 +262,15 @@ async def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunRespons
         dataset_file, custom_text_cases = _load_uploaded_text_to_sql_cases(request.dataset_file_id)
         dataset_name = dataset_file.name
 
+    rag_source_cases = _resolve_rag_source_cases(
+        custom_cases=custom_text_cases,
+        runner_mode=runner_mode,
+    )
+    auth_context = _resolve_optional_auth_context(
+        authorization=authorization,
+        session=session,
+    )
+
     if run_all or "text_to_sql" in selected:
         summary, results = await _run_text_to_sql_suite(
             custom_text_cases,
@@ -238,6 +287,15 @@ async def run_evaluations(request: EvaluationRunRequest) -> EvaluationRunRespons
 
     if run_all or "metric_retrieval" in selected:
         summary, results = _run_metric_retrieval_suite()
+        suites.append(summary)
+        cases.extend(results)
+
+    if run_all or "knowledge_retrieval" in selected:
+        summary, results = _run_knowledge_retrieval_suite(
+            rag_source_cases,
+            auth_context=auth_context,
+            session=session,
+        )
         suites.append(summary)
         cases.extend(results)
 
@@ -346,8 +404,8 @@ def _run_metric_retrieval_suite() -> tuple[EvaluationSuiteSummary, list[Evaluati
     case_by_id = {case.id: case for case in load_metric_retrieval_cases()}
     suite = _suite_summary(
         suite_id="metric_retrieval",
-        name="指标口径 / RAG 检索评测",
-        description="验证自然语言问题能否召回正确业务指标，避免错误口径污染 SQL。",
+        name="指标口径检索评测",
+        description="验证自然语言问题能否召回内置指标口径，避免错误口径污染 SQL。",
         total=report.total,
         passed=report.passed,
         failed=report.failed,
@@ -369,6 +427,162 @@ def _run_metric_retrieval_suite() -> tuple[EvaluationSuiteSummary, list[Evaluati
         for result in report.results
     ]
     return suite, results
+
+
+def _run_knowledge_retrieval_suite(
+    source_cases: list[TextToSqlEvalCase],
+    *,
+    auth_context: AuthContext | None,
+    session: Session,
+) -> tuple[EvaluationSuiteSummary, list[EvaluationCaseResult]]:
+    """运行真实 Milvus RAG 知识库命中评测。
+
+    这里的“RAG 命中率”和内置“指标命中率”分开计算：只有当前租户知识库
+    已同步文档，并且检索返回来源时才算命中。没有知识库、没有同步分片或没有
+    `requires_rag` 用例时，RAG 命中率会清晰显示为 0，而不是借用指标检索分数。
+    """
+
+    started = perf_counter()
+    rag_cases = [case for case in source_cases if case.requires_rag]
+    if auth_context is None:
+        return _empty_knowledge_retrieval_suite(
+            duration_ms=_elapsed_ms(started),
+            description="未登录，无法读取租户知识库，RAG 知识库命中率按 0% 处理。",
+        ), []
+    if not rag_cases:
+        return _empty_knowledge_retrieval_suite(
+            duration_ms=_elapsed_ms(started),
+            description="当前评测集没有 requires_rag=true 用例，RAG 知识库命中率按 0% 处理。",
+        ), []
+
+    repository = KnowledgeRepository(session)
+    knowledge_base = repository.ensure_default_base(
+        tenant_id=auth_context.tenant.id,
+        workspace_id=auth_context.workspace.id,
+        created_by=auth_context.user.id,
+    )
+    synced_documents = [
+        document
+        for document in repository.list_visible_documents(
+            tenant_id=auth_context.tenant.id,
+            workspace_id=auth_context.workspace.id,
+        )
+        if document.sync_status == "synced" and (document.sync_chunk_count or 0) > 0
+    ]
+
+    if not synced_documents:
+        results = [
+            _knowledge_retrieval_case_result(
+                case,
+                passed=False,
+                actual="当前租户没有已同步的 RAG 知识库分片。",
+                errors=["没有可检索的 Milvus 知识库数据"],
+            )
+            for case in rag_cases
+        ]
+        return _knowledge_retrieval_suite_summary(
+            total=len(results),
+            passed=0,
+            failed=len(results),
+            duration_ms=_elapsed_ms(started),
+            description=f"当前租户没有已同步知识库，{len(results)} 条 RAG 用例全部未命中。",
+        ), results
+
+    retriever = get_rag_document_retriever()
+    scope = RagKnowledgeScope(
+        tenant_id=auth_context.tenant.id,
+        workspace_id=auth_context.workspace.id,
+        knowledge_base_id=knowledge_base.id,
+    )
+    results: list[EvaluationCaseResult] = []
+    for case in rag_cases:
+        retrieval = retriever.retrieve(case.question, scope=scope)
+        sources = retrieval.sources
+        passed = bool(sources)
+        actual = (
+            "命中：" + ", ".join(sources[:5])
+            if passed
+            else f"未命中，检索模式：{retrieval.retrieval_mode}"
+        )
+        results.append(
+            _knowledge_retrieval_case_result(
+                case,
+                passed=passed,
+                actual=actual,
+                errors=[] if passed else ["知识库检索没有返回来源"],
+            )
+        )
+
+    passed_count = sum(1 for result in results if result.status == "passed")
+    return _knowledge_retrieval_suite_summary(
+        total=len(results),
+        passed=passed_count,
+        failed=len(results) - passed_count,
+        duration_ms=_elapsed_ms(started),
+        description=(
+            f"基于当前租户 {len(synced_documents)} 个已同步知识库文件，"
+            f"命中 {passed_count}/{len(results)} 条 RAG 用例。"
+        ),
+    ), results
+
+
+def _knowledge_retrieval_case_result(
+    case: TextToSqlEvalCase,
+    *,
+    passed: bool,
+    actual: str,
+    errors: list[str],
+) -> EvaluationCaseResult:
+    return EvaluationCaseResult(
+        suite_id="knowledge_retrieval",
+        suite_name="RAG 知识库命中评测",
+        case_id=f"rag_{case.id}",
+        title=case.question,
+        status=_case_status(passed),
+        question=case.question,
+        expected="当前租户知识库应返回至少一个相关来源。",
+        actual=actual,
+        errors=errors,
+        tags=["knowledge_retrieval", *case.tags],
+        difficulty=case.difficulty,
+        requires_rag=True,
+        ablation_tags=["rag_knowledge", *case.ablation_tags],
+    )
+
+
+def _empty_knowledge_retrieval_suite(
+    *,
+    duration_ms: int,
+    description: str,
+) -> EvaluationSuiteSummary:
+    suite = _knowledge_retrieval_suite_summary(
+        total=0,
+        passed=0,
+        failed=0,
+        duration_ms=duration_ms,
+        description=description,
+    )
+    suite.status = "idle"
+    return suite
+
+
+def _knowledge_retrieval_suite_summary(
+    *,
+    total: int,
+    passed: int,
+    failed: int,
+    duration_ms: int,
+    description: str,
+) -> EvaluationSuiteSummary:
+    return _suite_summary(
+        suite_id="knowledge_retrieval",
+        name="RAG 知识库命中评测",
+        description=description,
+        total=total,
+        passed=passed,
+        failed=failed,
+        duration_ms=duration_ms,
+    )
 
 
 def _run_sql_safety_suite() -> tuple[EvaluationSuiteSummary, list[EvaluationCaseResult]]:
@@ -594,6 +808,7 @@ def _build_kpis(suites: list[EvaluationSuiteSummary], duration_ms: int, runner_m
     text_suite = _find_suite(suites, "text_to_sql")
     safety_suite = _find_suite(suites, "sql_safety")
     retrieval_suite = _find_suite(suites, "metric_retrieval")
+    knowledge_suite = _find_suite(suites, "knowledge_retrieval")
     return [
         EvaluationKpi(
             id="overall",
@@ -618,10 +833,21 @@ def _build_kpis(suites: list[EvaluationSuiteSummary], duration_ms: int, runner_m
         ),
         EvaluationKpi(
             id="retrieval",
-            label="RAG 命中率",
+            label="指标命中率",
             value=_rate_text(retrieval_suite),
-            description="指标口径检索是否召回正确业务定义。",
+            description="内置指标口径是否召回正确业务定义，不等同于 Milvus 知识库命中率。",
             status=retrieval_suite.status if retrieval_suite else "idle",
+        ),
+        EvaluationKpi(
+            id="knowledge_retrieval",
+            label="RAG 命中率",
+            value=_rate_text(knowledge_suite),
+            description=(
+                knowledge_suite.description
+                if knowledge_suite
+                else "未运行 RAG 知识库命中评测。"
+            ),
+            status=knowledge_suite.status if knowledge_suite else "idle",
         ),
         EvaluationKpi(
             id="latency",
@@ -705,13 +931,15 @@ def _build_issue_distribution(cases: list[EvaluationCaseResult]) -> list[Evaluat
         return [
             EvaluationIssueDistribution(name="SQL 生成", value=0, status="ok"),
             EvaluationIssueDistribution(name="安全拦截", value=0, status="ok"),
-            EvaluationIssueDistribution(name="RAG 检索", value=0, status="ok"),
+            EvaluationIssueDistribution(name="指标检索", value=0, status="ok"),
+            EvaluationIssueDistribution(name="RAG 知识库", value=0, status="ok"),
             EvaluationIssueDistribution(name="图表推荐", value=0, status="ok"),
         ]
     counters = {
         "SQL 生成": 0,
         "安全拦截": 0,
-        "RAG 检索": 0,
+        "指标检索": 0,
+        "RAG 知识库": 0,
         "图表推荐": 0,
     }
     for case in failed_cases:
@@ -722,7 +950,9 @@ def _build_issue_distribution(cases: list[EvaluationCaseResult]) -> list[Evaluat
         elif case.suite_id == "sql_safety":
             counters["安全拦截"] += 1
         elif case.suite_id == "metric_retrieval":
-            counters["RAG 检索"] += 1
+            counters["指标检索"] += 1
+        elif case.suite_id == "knowledge_retrieval":
+            counters["RAG 知识库"] += 1
     return [
         EvaluationIssueDistribution(
             name=name, value=value, status="ok" if value == 0 else "warning"
@@ -780,7 +1010,7 @@ def _build_model_comparisons(
             sql_quality_rate=max(0.0, round(current.sql_executable_rate - 0.1, 4)),
             retrieval_pass_rate=0.0,
             avg_latency_ms=max(1, current.avg_latency_ms - 120),
-            note="用于证明 RAG/指标口径注入的收益。",
+            note="用于证明指标口径注入的收益；Milvus 知识库命中率需要单独评测。",
         ),
     ]
 

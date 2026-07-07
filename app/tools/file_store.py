@@ -97,6 +97,8 @@ class ManagedFileStore:
             "uploaded_at": datetime.now(UTC).isoformat(),
             "stored_name": stored_name,
             "previewable": extension in TEXT_PREVIEW_EXTENSIONS,
+            "source_scope": "tenant",
+            "readonly": False,
             "sync_status": None,
             "sync_message": None,
             "sync_collection": None,
@@ -242,7 +244,10 @@ def _managed_file_from_metadata(metadata: dict[str, Any]) -> ManagedFile:
     让历史元数据可以无缝升级，不需要额外迁移本地 JSON 文件。
     """
 
-    return ManagedFile(**{key: metadata.get(key) for key in ManagedFile.model_fields})
+    normalized = {key: metadata.get(key) for key in ManagedFile.model_fields}
+    normalized["source_scope"] = normalized.get("source_scope") or "tenant"
+    normalized["readonly"] = bool(normalized.get("readonly") or False)
+    return ManagedFile(**normalized)
 
 def _sanitize_filename(filename: str) -> str:
     """清理文件名，避免路径穿越和奇怪控制字符。"""

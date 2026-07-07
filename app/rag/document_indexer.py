@@ -104,6 +104,7 @@ def sync_rag_file_to_milvus(
     workspace_id: int | str | None = None,
     knowledge_base_id: int | str | None = None,
     document_id: int | str | None = None,
+    source_scope: str = "tenant",
 ) -> RagFileSyncResult:
     """把一个已上传 RAG 文件切片并同步到 Milvus。
 
@@ -167,6 +168,7 @@ def sync_rag_file_to_milvus(
                 tenant_id=_scope_value(tenant_id),
                 workspace_id=_scope_value(workspace_id),
                 knowledge_base_id=_scope_value(knowledge_base_id),
+                source_scope=source_scope or "tenant",
                 document_id=_scope_value(document_id),
                 file_id=file.id,
                 file_name=file.name,

@@ -22,6 +22,7 @@ class MilvusRagDocument:
     chunk_index: int
     content: str
     vector: list[float]
+    source_scope: str = "tenant"
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class MilvusRagSearchHit:
     chunk_index: int
     content: str
     score: float
+    source_scope: str = "tenant"
 
 
 class MilvusRagDocumentStore:
@@ -78,6 +80,7 @@ class MilvusRagDocumentStore:
                     "vector": document.vector,
                     "tenant_id": document.tenant_id,
                     "workspace_id": document.workspace_id,
+                    "source_scope": document.source_scope,
                     "knowledge_base_id": document.knowledge_base_id,
                     "document_id": document.document_id,
                     "file_id": document.file_id,
@@ -122,6 +125,7 @@ class MilvusRagDocumentStore:
                 "id",
                 "tenant_id",
                 "workspace_id",
+                "source_scope",
                 "knowledge_base_id",
                 "document_id",
                 "file_id",
@@ -142,6 +146,7 @@ class MilvusRagDocumentStore:
                     tenant_id=str(entity.get("tenant_id", "")),
                     workspace_id=str(entity.get("workspace_id", "")),
                     knowledge_base_id=str(entity.get("knowledge_base_id", "")),
+                    source_scope=str(entity.get("source_scope", "tenant") or "tenant"),
                     document_id=str(entity.get("document_id", "")),
                     file_id=str(entity.get("file_id", "")),
                     file_name=str(entity.get("file_name", "")),
@@ -200,13 +205,17 @@ def _build_scope_filter(
     workspace_id: int | str,
     knowledge_base_id: int | str | None = None,
 ) -> str:
-    parts = [
+    """构建 Milvus 过滤条件：公共知识 + 当前租户知识。"""
+
+    tenant_parts = [
         f'tenant_id == "{_escape_filter_value(str(tenant_id))}"',
         f'workspace_id == "{_escape_filter_value(str(workspace_id))}"',
     ]
     if knowledge_base_id is not None:
-        parts.append(f'knowledge_base_id == "{_escape_filter_value(str(knowledge_base_id))}"')
-    return " and ".join(parts)
+        tenant_parts.append(f'knowledge_base_id == "{_escape_filter_value(str(knowledge_base_id))}"')
+    tenant_filter = " and ".join(tenant_parts)
+    global_filter = 'source_scope == "global"'
+    return f"({global_filter}) or ({tenant_filter})"
 
 
 def _extract_entity(hit: dict[str, Any]) -> dict[str, Any]:

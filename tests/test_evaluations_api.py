@@ -17,16 +17,24 @@ def test_run_evaluations_api_returns_quality_report() -> None:
     assert payload["run_id"].startswith("eval-")
     assert payload["duration_ms"] >= 1
     assert len(payload["kpis"]) >= 4
-    assert {suite["id"] for suite in payload["suites"]} == {
+    kpi_by_id = {item["id"]: item for item in payload["kpis"]}
+    assert kpi_by_id["retrieval"]["label"] == "指标命中率"
+    assert "Milvus" in kpi_by_id["retrieval"]["description"]
+    assert kpi_by_id["knowledge_retrieval"]["label"] == "RAG 命中率"
+    assert kpi_by_id["knowledge_retrieval"]["value"] == "0.0%"
+    suite_by_id = {suite["id"]: suite for suite in payload["suites"]}
+    assert set(suite_by_id) == {
         "text_to_sql",
         "sql_safety",
         "metric_retrieval",
+        "knowledge_retrieval",
     }
+    assert suite_by_id["knowledge_retrieval"]["total"] == 0
     assert payload["cases"]
     assert payload["version_snapshots"][-1]["version"] == "v4.1.2"
     assert len(payload["trend_points"]) >= 4
     assert payload["issue_distribution"]
-    assert len(payload["recent_runs"]) == 3
+    assert len(payload["recent_runs"]) == 4
     assert len(payload["model_comparisons"]) >= 3
 
 
@@ -127,7 +135,7 @@ def test_run_evaluations_with_sample_100_case_dataset() -> None:
 
 
 def test_run_evaluations_with_product_360_case_dataset() -> None:
-    """????? 360 ? benchmark ???????????"""
+    """上传 360 条 benchmark 测试集时应能正常完成评测。"""
 
     client = TestClient(create_app())
     dataset_path = Path("evals/text_to_sql_product_360_cases.jsonl")

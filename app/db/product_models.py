@@ -685,6 +685,7 @@ class KnowledgeBase(ProductBase, TimestampMixin):
         UniqueConstraint("workspace_id", "name", name="uk_knowledge_bases_workspace_name"),
         Index("idx_knowledge_bases_tenant_workspace", "tenant_id", "workspace_id"),
         Index("idx_knowledge_bases_workspace_default", "workspace_id", "is_default"),
+        Index("idx_knowledge_bases_scope", "scope", "status"),
     )
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
@@ -700,8 +701,10 @@ class KnowledgeBase(ProductBase, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, default="tenant")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    readonly: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by: Mapped[int | None] = mapped_column(
         ID_TYPE,
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -723,6 +726,7 @@ class KnowledgeDocument(ProductBase, TimestampMixin):
         UniqueConstraint("workspace_id", "file_id", name="uk_knowledge_documents_workspace_file"),
         Index("idx_knowledge_documents_base", "knowledge_base_id", "created_at"),
         Index("idx_knowledge_documents_sync", "workspace_id", "sync_status"),
+        Index("idx_knowledge_documents_scope", "source_scope", "sync_status"),
     )
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
@@ -747,6 +751,8 @@ class KnowledgeDocument(ProductBase, TimestampMixin):
     extension: Mapped[str] = mapped_column(String(32), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     previewable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    source_scope: Mapped[str] = mapped_column(String(32), nullable=False, default="tenant")
+    readonly: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sync_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sync_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     sync_collection: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -774,6 +780,7 @@ class KnowledgeChunk(ProductBase):
         UniqueConstraint("chunk_id", name="uk_knowledge_chunks_chunk_id"),
         Index("idx_knowledge_chunks_base", "knowledge_base_id", "chunk_index"),
         Index("idx_knowledge_chunks_workspace", "tenant_id", "workspace_id"),
+        Index("idx_knowledge_chunks_scope", "source_scope", "tenant_id", "workspace_id"),
     )
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
@@ -797,6 +804,7 @@ class KnowledgeChunk(ProductBase):
         ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
         nullable=False,
     )
+    source_scope: Mapped[str] = mapped_column(String(32), nullable=False, default="tenant")
     chunk_id: Mapped[str] = mapped_column(String(128), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)

@@ -1050,6 +1050,7 @@ class KnowledgeRepository:
         statement = select(KnowledgeBase).where(
             KnowledgeBase.tenant_id == tenant_id,
             KnowledgeBase.workspace_id == workspace_id,
+            KnowledgeBase.scope == "tenant",
             KnowledgeBase.is_default.is_(True),
             KnowledgeBase.status == "active",
         )
@@ -1061,8 +1062,10 @@ class KnowledgeRepository:
             workspace_id=workspace_id,
             name="默认知识库",
             description="当前工作空间默认的 RAG 业务知识库。",
+            scope="tenant",
             status="active",
             is_default=True,
+            readonly=False,
             created_by=created_by,
         )
         self.session.add(knowledge_base)
@@ -1070,7 +1073,7 @@ class KnowledgeRepository:
         return knowledge_base
 
     def list_documents(self, *, workspace_id: int) -> list[KnowledgeDocument]:
-        """列出当前工作空间的知识库文档。"""
+        """列出当前工作空间的租户知识文档。"""
 
         statement = (
             select(KnowledgeDocument)
@@ -1078,6 +1081,39 @@ class KnowledgeRepository:
             .order_by(KnowledgeDocument.created_at.desc())
         )
         return list(self.session.scalars(statement).all())
+
+    def list_visible_documents(self, *, tenant_id: int, workspace_id: int) -> list[KnowledgeDocument]:
+        """返回租户可见的知识文档，包含公共知识和当前工作空间知识。"""
+
+        tenant_scope = (
+            (KnowledgeDocument.tenant_id == tenant_id)
+            & (KnowledgeDocument.workspace_id == workspace_id)
+        )
+        statement = (
+            select(KnowledgeDocument)
+            .where(or_(KnowledgeDocument.source_scope == "global", tenant_scope))
+            .order_by(KnowledgeDocument.source_scope.asc(), KnowledgeDocument.created_at.desc())
+        )
+        return list(self.session.scalars(statement).all())
+
+    def get_visible_document_by_file(
+        self,
+        *,
+        tenant_id: int,
+        workspace_id: int,
+        file_id: str,
+    ) -> KnowledgeDocument | None:
+        """按文件 ID 读取租户可见的知识文档。"""
+
+        tenant_scope = (
+            (KnowledgeDocument.tenant_id == tenant_id)
+            & (KnowledgeDocument.workspace_id == workspace_id)
+        )
+        statement = select(KnowledgeDocument).where(
+            KnowledgeDocument.file_id == file_id,
+            or_(KnowledgeDocument.source_scope == "global", tenant_scope),
+        )
+        return self.session.scalar(statement)
 
     def get_document_by_file(
         self,
@@ -1106,6 +1142,8 @@ class KnowledgeRepository:
         size_bytes: int,
         previewable: bool,
         uploaded_by: int | None = None,
+        source_scope: str = "tenant",
+        readonly: bool = False,
     ) -> KnowledgeDocument:
         """登记一个上传文档。"""
 
@@ -1119,6 +1157,8 @@ class KnowledgeRepository:
             extension=extension,
             size_bytes=size_bytes,
             previewable=previewable,
+            source_scope=source_scope,
+            readonly=readonly,
             sync_status="pending",
             uploaded_by=uploaded_by,
         )
@@ -1157,6 +1197,7 @@ class KnowledgeRepository:
                     workspace_id=document.workspace_id,
                     knowledge_base_id=document.knowledge_base_id,
                     document_id=document.id,
+                    source_scope=document.source_scope,
                     chunk_id=chunk.chunk_id,
                     chunk_index=chunk.chunk_index,
                     content=chunk.content,

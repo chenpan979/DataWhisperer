@@ -88,10 +88,12 @@ def test_milvus_rag_document_store_search_adds_scope_filter() -> None:
     )
 
     assert fake_client.search_kwargs["filter"] == (
-        'tenant_id == "10" and workspace_id == "20" and knowledge_base_id == "30"'
+        '(source_scope == "global") or '
+        '(tenant_id == "10" and workspace_id == "20" and knowledge_base_id == "30")'
     )
     assert fake_client.search_kwargs["limit"] == 3
     assert hits[0].file_name == "metrics.md"
+    assert hits[0].source_scope == "tenant"
     assert hits[0].score == 0.87
 
 

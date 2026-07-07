@@ -63,7 +63,10 @@ def list_rag_files(
     auth_context = _resolve_optional_auth_context(authorization=authorization, session=session)
     if auth_context is None:
         return _list_files(get_rag_file_store())
-    documents = KnowledgeRepository(session).list_documents(workspace_id=auth_context.workspace.id)
+    documents = KnowledgeRepository(session).list_visible_documents(
+        tenant_id=auth_context.tenant.id,
+        workspace_id=auth_context.workspace.id,
+    )
     return ManagedFileList(category="rag", files=[_document_to_managed_file(item) for item in documents])
 
 
@@ -102,6 +105,7 @@ async def upload_rag_file(
         previewable=saved_file.previewable,
         uploaded_by=auth_context.user.id,
     )
+    _ensure_rag_document_writable(document)
     updated_document = _sync_workspace_rag_document(
         store=store,
         repository=repository,
@@ -133,12 +137,14 @@ def sync_rag_file(
         return _sync_local_rag_file(store, file_id)
 
     repository = KnowledgeRepository(session)
-    document = repository.get_document_by_file(
+    document = repository.get_visible_document_by_file(
+        tenant_id=auth_context.tenant.id,
         workspace_id=auth_context.workspace.id,
         file_id=file_id,
     )
     if document is None:
         raise HTTPException(status_code=404, detail="文件不存在。")
+    _ensure_rag_document_writable(document)
     updated_document = _sync_workspace_rag_document(
         store=store,
         repository=repository,
@@ -174,12 +180,14 @@ def delete_rag_file(
         return {"deleted": True, "vectors_deleted": vector_deleted}
 
     repository = KnowledgeRepository(session)
-    document = repository.get_document_by_file(
+    document = repository.get_visible_document_by_file(
+        tenant_id=auth_context.tenant.id,
         workspace_id=auth_context.workspace.id,
         file_id=file_id,
     )
     if document is None:
         raise HTTPException(status_code=404, detail="文件不存在。")
+    _ensure_rag_document_writable(document)
     vector_deleted = delete_rag_file_vectors(file_id)
     store.delete(file_id)
     repository.delete_document(document)
@@ -205,7 +213,8 @@ def preview_rag_file(
 
     auth_context = _resolve_optional_auth_context(authorization=authorization, session=session)
     if auth_context is not None:
-        document = KnowledgeRepository(session).get_document_by_file(
+        document = KnowledgeRepository(session).get_visible_document_by_file(
+            tenant_id=auth_context.tenant.id,
             workspace_id=auth_context.workspace.id,
             file_id=file_id,
         )
@@ -263,6 +272,7 @@ def _sync_workspace_rag_document(
         workspace_id=document.workspace_id,
         knowledge_base_id=document.knowledge_base_id,
         document_id=document.id,
+        source_scope=document.source_scope,
     )
     store.update_metadata(document.file_id, sync_result.to_metadata())
     updated_document = repository.update_document_sync(
@@ -291,7 +301,16 @@ def _document_to_managed_file(document: KnowledgeDocument) -> ManagedFile:
         sync_collection=document.sync_collection,
         sync_chunk_count=document.sync_chunk_count,
         synced_at=_format_datetime(document.synced_at),
+        source_scope=document.source_scope,
+        readonly=document.readonly or document.source_scope == "global",
     )
+
+
+def _ensure_rag_document_writable(document: KnowledgeDocument) -> None:
+    """公共知识由平台统一维护，租户侧只能查看和检索。"""
+
+    if document.readonly or document.source_scope == "global":
+        raise HTTPException(status_code=403, detail="公共知识由平台维护，当前账号仅支持查看。")
 
 
 def _parse_sync_time(value: str | None) -> datetime | None:

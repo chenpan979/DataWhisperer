@@ -73,5 +73,6 @@ def test_sync_rag_file_to_milvus_builds_documents(tmp_path) -> None:
     assert vector_store.documents[0].workspace_id == "20"
     assert vector_store.documents[0].knowledge_base_id == "30"
     assert vector_store.documents[0].document_id == "40"
+    assert vector_store.documents[0].source_scope == "tenant"
     assert vector_store.documents[0].vector == [1.0, 0.0, 0.0, 0.0]
     assert result.chunks[0].vector_collection == "datawhisperer_rag_documents"

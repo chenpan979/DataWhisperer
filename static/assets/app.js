@@ -44,6 +44,7 @@ const state = {
 
 const settingsStorageKey = "datawhisperer.systemSettings.v1";
 const authStorageKey = "datawhisperer.authSession.v1";
+const evaluationCacheStoragePrefix = "datawhisperer.evaluationReport.v1";
 
 const defaultSettings = {
   datasourceName: "示例 MySQL 库",
@@ -3572,7 +3573,7 @@ function switchView(viewId) {
     loadManagedFiles("rag");
   }
   if (viewId === "evaluationView" && !state.evaluationLoaded) {
-    runEvaluations();
+    restoreCachedEvaluationReport();
   }
   if (viewId === "datasetView") {
     loadManagedFiles("evaluation");
@@ -3596,7 +3597,7 @@ const evaluationProgressSteps = [
   },
   {
     title: "执行用例",
-    detail: "正在运行 Text-to-SQL 用例，包含 Schema Linking、RAG 检索、SQL 生成和修复。",
+    detail: "正在运行 Text-to-SQL 用例，包含 Schema Linking、指标检索、SQL 生成和修复。",
   },
   {
     title: "质量校验",
@@ -3627,6 +3628,7 @@ async function runEvaluations() {
     });
     state.evaluationReport = report;
     state.evaluationLoaded = true;
+    writeCachedEvaluationReport(report, datasetFileId);
     renderEvaluationReport(report);
     const failed = report.cases.filter((item) => item.status === "failed").length;
     setEvaluationState(failed ? "存在失败" : "全部通过", failed ? "warning" : "ok");
@@ -3776,8 +3778,123 @@ function setEvaluationState(label, kind = "idle") {
   el.evaluationState.className = `state-label ${kind}`;
 }
 
+function evaluationCacheKey(datasetFileId = el.evaluationDatasetSelect?.value || "") {
+  const auth = state.auth || {};
+  const tenant = auth.tenantSlug || "anonymous";
+  const workspace = auth.workspaceKey || auth.workspaceId || "default";
+  const dataset = datasetFileId || "builtin";
+  return `${evaluationCacheStoragePrefix}:${tenant}:${workspace}:${dataset}`;
+}
+
+function readCachedEvaluationReport(datasetFileId = el.evaluationDatasetSelect?.value || "") {
+  try {
+    const raw = localStorage.getItem(evaluationCacheKey(datasetFileId));
+    if (!raw) {
+      return null;
+    }
+    const cached = JSON.parse(raw);
+    if (!cached?.report || !Array.isArray(cached.report.kpis)) {
+      return null;
+    }
+    return cached;
+  } catch (error) {
+    console.warn("Read evaluation cache failed.", error);
+    return null;
+  }
+}
+
+function writeCachedEvaluationReport(report, datasetFileId = el.evaluationDatasetSelect?.value || "") {
+  try {
+    localStorage.setItem(
+      evaluationCacheKey(datasetFileId),
+      JSON.stringify({
+        cached_at: new Date().toISOString(),
+        dataset_file_id: datasetFileId || null,
+        dataset_name: report.dataset_name || selectedEvaluationDatasetName(),
+        report,
+      }),
+    );
+  } catch (error) {
+    console.warn("Write evaluation cache failed.", error);
+  }
+}
+
+function restoreCachedEvaluationReport() {
+  stopEvaluationProgressTimer();
+  if (el.evaluationProgressCard) {
+    el.evaluationProgressCard.hidden = true;
+  }
+
+  const datasetFileId = el.evaluationDatasetSelect?.value || "";
+  const cached = readCachedEvaluationReport(datasetFileId);
+  if (cached?.report) {
+    const report = cached.report;
+    const failed = (report.cases || []).filter((item) => item.status === "failed").length;
+    state.evaluationReport = report;
+    state.evaluationLoaded = true;
+    renderEvaluationReport(report);
+    setEvaluationState(failed ? "上次存在失败" : "上次全部通过", failed ? "warning" : "ok");
+    if (el.evaluationRunMeta) {
+      const cachedAt = cached.cached_at || report.generated_at;
+      el.evaluationRunMeta.textContent = `${report.dataset_name || cached.dataset_name || selectedEvaluationDatasetName()} · 上次结果 ${formatDate(cachedAt)} · 点击运行评测可刷新`;
+    }
+    return;
+  }
+
+  state.evaluationReport = null;
+  state.evaluationLoaded = true;
+  renderEvaluationEmpty();
+  setEvaluationState("等待运行", "idle");
+  if (el.evaluationRunMeta) {
+    el.evaluationRunMeta.textContent = `${selectedEvaluationDatasetName()} · 暂无上次结果，点击运行评测开始`;
+  }
+}
+
+function renderEvaluationEmpty() {
+  const cards = [
+    ["综合通过率", "-", "等待运行评测后生成通过率。"],
+    ["SQL 生成质量", "-", "不会自动消耗模型 API。"],
+    ["SQL 安全边界", "-", "点击运行后校验安全规则。"],
+    ["指标命中率", "-", "运行后统计指标检索效果。"],
+    ["RAG 命中率", "-", "运行后统计知识库命中情况。"],
+    ["本次耗时", "-", "点击运行评测后更新。"],
+  ];
+  el.evaluationKpis.innerHTML = cards
+    .map(
+      ([label, value, description]) => `
+        <div class="evaluation-kpi idle">
+          <div class="kpi-head">
+            <span>${escapeHtml(label)}</span>
+            <em>待运行</em>
+          </div>
+          <strong>${escapeHtml(value)}</strong>
+          <p>${escapeHtml(description)}</p>
+        </div>
+      `,
+    )
+    .join("");
+  if (state.evaluationTrendChart) {
+    state.evaluationTrendChart.dispose();
+    state.evaluationTrendChart = null;
+  }
+  el.evaluationTrendChart.innerHTML = '<div class="inline-empty">暂无上次评测结果</div>';
+  el.evaluationIssueList.innerHTML = '<div class="inline-empty">暂无问题分布</div>';
+  el.evaluationRecentRuns.innerHTML = '<div class="inline-empty">暂无最近任务</div>';
+  if (el.evaluationDifficultyList) {
+    el.evaluationDifficultyList.innerHTML = '<div class="inline-empty">运行评测后查看难度分层</div>';
+  }
+  if (el.evaluationAblationList) {
+    el.evaluationAblationList.innerHTML = '<div class="inline-empty">运行评测后查看消融对比</div>';
+  }
+  el.evaluationSuites.innerHTML = '<div class="inline-empty">暂无评测套件结果</div>';
+  el.evaluationVersionBody.innerHTML = `<tr><td colspan="6"><div class="inline-empty">暂无版本快照</div></td></tr>`;
+  el.evaluationCaseList.innerHTML = '<div class="inline-empty">点击运行评测后查看用例明细</div>';
+  el.evaluationModelBody.innerHTML = `<tr><td colspan="7"><div class="inline-empty">暂无模型对比数据</div></td></tr>`;
+  el.evaluationErrorList.innerHTML = '<div class="inline-empty">暂无错误案例</div>';
+}
+
 function renderEvaluationLoading() {
-  el.evaluationKpis.innerHTML = Array.from({ length: 5 })
+  el.evaluationKpis.innerHTML = Array.from({ length: 6 })
     .map(
       () => `
         <div class="evaluation-kpi skeleton">
@@ -4079,7 +4196,7 @@ function labelForEvalBucket(name) {
     chart: "图表推荐",
     metric_retrieval: "指标检索",
     multi_agent: "多智能体",
-    rag_metric: "RAG 指标",
+    rag_metric: "指标口径",
     sql_of_thought: "SQL-of-Thought",
     sql_repair: "SQL 纠错",
     safety: "安全边界",
@@ -4278,7 +4395,8 @@ function deltaForKpi(id) {
     overall: "较基线提升",
     sql_quality: "稳定",
     sql_safety: "硬边界",
-    retrieval: "RAG 增强",
+    retrieval: "指标增强",
+    knowledge_retrieval: "知识命中",
     latency: "运行耗时",
   };
   return labels[id] || "监控中";
@@ -4463,7 +4581,37 @@ function selectEvaluationDataset(fileId) {
   updateEvaluationDatasetTrigger();
   toggleEvaluationDatasetMenu(false);
   state.evaluationLoaded = false;
-  el.evaluationRunMeta.textContent = `${selectedEvaluationDatasetName()} · 等待运行`;
+  if (document.querySelector("#evaluationView")?.classList.contains("active")) {
+    restoreCachedEvaluationReport();
+  } else if (el.evaluationRunMeta) {
+    el.evaluationRunMeta.textContent = `${selectedEvaluationDatasetName()} · 等待运行`;
+  }
+}
+
+function isReadonlyManagedFile(file) {
+  return Boolean(file?.readonly || file?.source_scope === "global");
+}
+
+function renderFileNameCell(file, category) {
+  if (category !== "rag") {
+    return `<div class="file-name-cell" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>`;
+  }
+
+  const isGlobal = file.source_scope === "global";
+  const scopeLabel = isGlobal ? "公共知识" : "我的知识";
+  const accessLabel = isReadonlyManagedFile(file) ? "只读" : "可管理";
+  const scopeClass = isGlobal ? "global" : "tenant";
+  const accessClass = isReadonlyManagedFile(file) ? "readonly" : "writable";
+
+  return `
+    <div class="file-name-stack" title="${escapeHtml(file.name)}">
+      <div class="file-name-cell">${escapeHtml(file.name)}</div>
+      <div class="file-meta-row">
+        <span class="file-scope-badge ${scopeClass}">${escapeHtml(scopeLabel)}</span>
+        <span class="file-scope-badge ${accessClass}">${escapeHtml(accessLabel)}</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderManagedFiles(category) {
@@ -4491,17 +4639,25 @@ function renderManagedFiles(category) {
 
   table.innerHTML = files
     .map((file) => {
+      const readonlyFile = category === "rag" && isReadonlyManagedFile(file);
       const syncCell = hasSyncColumn ? `<td>${renderFileSyncState(file)}</td>` : "";
-      const syncAction = hasSyncColumn
+      const syncAction = hasSyncColumn && !readonlyFile
         ? `
           <button class="icon-button" type="button" data-action="sync" data-id="${escapeHtml(file.id)}" title="同步到 Milvus">
             <svg><use href="#icon-refresh"></use></svg>
           </button>
         `
         : "";
+      const deleteAction = !readonlyFile
+        ? `
+          <button class="danger-button icon-only" type="button" data-action="delete" data-id="${escapeHtml(file.id)}" title="删除">
+            <svg><use href="#icon-trash"></use></svg>
+          </button>
+        `
+        : "";
       return `
-        <tr>
-          <td><div class="file-name-cell" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div></td>
+        <tr class="${readonlyFile ? "readonly-file" : ""}">
+          <td>${renderFileNameCell(file, category)}</td>
           <td><span class="file-type-badge">${escapeHtml((file.extension || "-").toUpperCase())}</span></td>
           <td>${escapeHtml(formatBytes(file.size_bytes))}</td>
           <td>${escapeHtml(formatDate(file.uploaded_at))}</td>
@@ -4512,9 +4668,7 @@ function renderManagedFiles(category) {
                 <svg><use href="#icon-eye"></use></svg>
               </button>
               ${syncAction}
-              <button class="danger-button icon-only" type="button" data-action="delete" data-id="${escapeHtml(file.id)}" title="删除">
-                <svg><use href="#icon-trash"></use></svg>
-              </button>
+              ${deleteAction}
             </div>
           </td>
         </tr>

@@ -2,7 +2,7 @@
 
 DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。用户可以用中文提出数据问题，系统自动读取 MySQL 示例库结构，生成安全 SQL，执行查询，并返回表格、图表和业务分析结论。
 
-当前项目已经更新到 **V4.3.1：三轮引导式 SQL 修复 Agent 版本**。
+当前项目主线已经更新到 **V4.3.1：三轮引导式 SQL 修复 Agent 版本**，并补齐 **V3.13.14：公共知识 + 租户知识分层**。
 
 版本入口：
 
@@ -86,6 +86,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - `v3.13.11`：RAG 知识库上传文件接入自动切片和 Milvus 同步，文件列表展示同步状态，并支持失败后手动重试。
 - `v3.13.12`：把 RAG 知识库升级为租户/工作空间级产品结构，新增知识库、文档、切片表，并把 Milvus 元数据同步到 tenant/workspace/knowledge_base/document 维度。
 - `v3.13.13`：把上传知识库接入 AI 查数 RAG 检索链路，Milvus 查询强制携带 tenant/workspace/knowledge_base 过滤条件，避免多租户知识串用。
+- `v3.13.14`：RAG 知识库补齐公共知识 + 租户知识分层，公共知识对所有租户可见但只读，租户上传资料仍按 workspace 隔离并可管理。
 - `v4.0.0`：引入 SQL-of-Thought 多智能体编排底座，将 AI 查数拆分为 Schema Linking、Knowledge Retrieval、Query Planning、SQL Generation、Validation/Execution、Chart 和 Insight 等 Agent，单库先跑稳，多库路由、MCP 工具和 Agent 评测后续扩展。
 - `v4.1.0`：系统设置里的 Agent 模型绑定正式接入 SQL-of-Thought 编排器，SQL 生成、SQL 修复和分析总结可以按工作空间 Profile 独立路由，trace 会显示实际使用的模型绑定。
 - `v4.1.1`：整理多智能体代码结构，将 Schema Linking、知识检索、查询规划、SQL 生成、校验执行、图表和结论 Agent 拆成独立文件，`app.agent` 仅保留历史兼容入口。
@@ -186,6 +187,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - V3.13.11 补齐 RAG 文件上传到向量库的闭环：上传后自动切片、生成 embedding、写入独立的 Milvus collection，并把同步结果回写到文件元数据。
 - V3.13.12 将知识库正式纳入多租户产品库：每个工作空间自动拥有默认知识库，上传文档会登记到 `knowledge_documents`，切片会记录到 `knowledge_chunks`，并把 Milvus 写入元数据带上租户和工作空间边界。
 - V3.13.13 补齐知识库检索侧隔离：AI 查数前会基于当前工作空间默认知识库检索上传资料，检索结果注入 SQL prompt，并在响应中返回 `retrieved_knowledge`。
+- V3.13.14 把 RAG 知识库分成平台公共知识和租户私有知识：公共知识在所有租户可见但只读，租户上传的知识仍只在当前工作空间可管理。
 
 ## 技术栈
 
@@ -268,7 +270,7 @@ flowchart LR
     DATASETS --> RUN["POST /api/evaluations/run"]
     RUN --> OFFLINE["offline runner<br/>稳定回归，不调真实模型"]
     RUN --> AGENT["agent runner<br/>真实 SQL-of-Thought Agent 链路"]
-    AGENT --> KPIS["通过率 / SQL 质量 / 安全边界 / RAG 命中率"]
+    AGENT --> KPIS["通过率 / SQL 质量 / 安全边界 / 指标命中率 / RAG 命中率"]
     OFFLINE --> KPIS
     KPIS --> UI["评测中心<br/>进度面板、趋势、用例明细、错误案例"]
 ```
@@ -286,7 +288,7 @@ V4.3.1 之后，DataWhisperer 不是简单把函数改名叫 Agent，而是按�
 - API 层保持轻量，只负责请求、响应和异常转换。
 - 产品管理库负责租户、用户、工作空间、数据源、模型、知识库、会话和评测元数据。
 - Orchestrator 负责编排 SQL-of-Thought 多智能体链路，`app/agents` 是真实运行目录，`app/agent` 只是历史兼容入口。
-- RAG 检索强制携带 tenant、workspace、knowledge_base 过滤条件，避免多租户知识串用。
+- RAG 检索会合并平台公共知识和当前租户/工作空间知识，公共知识只读，租户知识按 tenant/workspace/knowledge_base 隔离。
 - Prompt 不是安全边界，SQL 安全必须由服务端策略、SQL 校验和执行层兜底。
 - 返回 `trace_steps`、`prompt_versions`、`retrieved_metrics`、`retrieved_knowledge` 和 `repair_count`，方便调试、评测和面试讲解。
 - 评测中心既支持不调用大模型的离线回归，也支持真实 Agent runner，便于后续做 RAG/无 RAG、修复/无修复、多 Agent/单 Agent 的消融实验。
@@ -609,7 +611,7 @@ GET    /api/files/rag/{file_id}/preview
 DELETE /api/files/rag/{file_id}
 ```
 
-当前文件上传已经支持资料管理、控制台预览，以及 RAG 知识库文件自动切片同步 Milvus。数据结构文件解析和 CSV 入库仍可作为后续增强方向。
+当前文件上传已经支持资料管理、控制台预览，以及 RAG 知识库文件自动切片同步 Milvus。公共知识会显示为只读，仅支持预览和检索；租户上传资料仍可同步、删除和管理。数据结构文件解析和 CSV 入库仍可作为后续增强方向。
 
 ### `POST /api/evaluations/run`
 
