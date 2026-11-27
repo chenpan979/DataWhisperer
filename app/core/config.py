@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     )
     query_timeout_seconds: int = 20
     max_query_rows: int = 100
+    enable_demo_sql_fallback: bool = False
 
     auth_token_secret: str = "datawhisperer-local-dev-secret"
     auth_token_ttl_seconds: int = 7 * 24 * 60 * 60

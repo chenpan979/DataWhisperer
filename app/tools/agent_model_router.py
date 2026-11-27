@@ -91,7 +91,7 @@ def build_agent_model_router(
             continue
         clients[binding.agent_key] = client_factory(
             base_url=route.base_url,
-            api_key=_decode_api_key(binding.profile.provider.credential),
+            api_key=decode_model_api_key(binding.profile.provider.credential),
             model=route.chat_model,
             temperature=route.temperature,
             max_tokens=route.max_tokens,
@@ -116,11 +116,11 @@ def _route_from_binding(binding: AgentModelBinding) -> AgentModelRoute:
         temperature=_float_param(params.get("temperature"), float(profile.temperature)),
         max_tokens=_int_param(params.get("max_tokens"), profile.max_tokens),
         enabled=binding.enabled,
-        has_api_key=_decode_api_key(provider.credential) is not None,
+        has_api_key=decode_model_api_key(provider.credential) is not None,
     )
 
 
-def _decode_api_key(credential: ModelCredential | None) -> str | None:
+def decode_model_api_key(credential: ModelCredential | None) -> str | None:
     if credential is None:
         return None
     value = credential.encrypted_api_key

@@ -109,7 +109,7 @@ DataWhisperer 是一个面向业务人员的自然语言数据分析智能体。
 - 返回查询表格、ECharts 图表配置、业务分析结论和执行轨迹。
 - 提供中文 Web 控制台，便于演示和面试讲解。
 - LLM 使用 OpenAI-compatible 封装，默认适配 DashScope/Qwen，也可以切换 OpenAI、DeepSeek 等兼容服务。
-- 没有配置大模型 API Key 时，部分典型问题会走演示兜底规则，方便本地快速验证。
+- AI 查数默认不使用演示兜底 SQL。模型调用或回复失败时会停止并显示错误；仅连接示例 MySQL 库 `datawhisperer_demo` 且显式设置 `ENABLE_DEMO_SQL_FALLBACK=true` 时，才允许使用演示查询。
 - V2 引入 PromptOps，将 SQL 生成、SQL 修复、分析总结、图表推荐 prompt 拆成版本化模板。
 - SQL 校验失败或数据库执行失败时，系统最多自动修复 3 次，并记录 `repair_count`。
 - 内置基础 Text-to-SQL 评测集，可快速检查 SQL 安全、关键 SQL 片段和图表推荐是否退化。
@@ -747,11 +747,11 @@ python -m app.evals.metric_retrieval
 
 ## 常见问题
 
-### 配了 API Key，但页面仍然提示用了演示兜底规则
+### AI 查数提示 SQL 生成失败
 
-先确认 Key 是否写到了 `.env`，而不是只写在 `.env.example`。
+登录后请检查「系统设置 → 模型配置」中 SQL 生成 Agent 绑定的服务地址、API Key 和模型名。工作空间已保存的模型绑定可能覆盖 `.env` 默认值。
 
-修改 `.env` 后需要重启服务。
+修改 `.env` 后需要重启服务。此错误发生在执行数据查询之前，不需要为此重新同步 Schema。
 
 ### MySQL 容器启动后马上退出
 

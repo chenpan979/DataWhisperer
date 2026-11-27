@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,13 +17,17 @@ from app.db.product_models import ModelCredential, ModelProfile, ModelProvider
 from app.models.model_settings import (
     AgentModelBindingPayload,
     AgentModelBindingUpdateRequest,
+    ModelChatTestRequest,
     ModelConnectionTestResponse,
+    ModelEndpointRequest,
+    ModelListResponse,
     ModelProfilePayload,
     ModelProviderPayload,
     ModelSettingsPayload,
     ModelSettingsUpdateRequest,
 )
 from app.repositories.product import ModelSettingsRepository
+from app.tools.agent_model_router import decode_model_api_key
 
 router = APIRouter(prefix="/model-settings", tags=["model_settings"])
 
@@ -133,51 +138,117 @@ def update_default_model_settings(
     return _build_model_settings_payload(session=session, provider=provider, profile=profile)
 
 
+@router.post("/default/models", response_model=ModelListResponse)
+def list_provider_models(
+    payload: ModelEndpointRequest,
+    auth_context: Annotated[AuthContext, Depends(require_auth_context)],
+    session: Session = Depends(get_product_session),
+) -> ModelListResponse:
+    """读取 OpenAI 兼容的模型列表，不修改表单配置。"""
+    base_url, api_key = _resolve_probe_credentials(payload, auth_context, session)
+    result = _probe_provider("GET", base_url, "models", api_key)
+    data = result.get("data")
+    if not isinstance(data, list):
+        raise HTTPException(502, detail="模型列表接口未返回 OpenAI 兼容的 data 数组。")
+    models = {
+        item["id"].strip() for item in data
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+        and 0 < len(item["id"].strip()) <= 128 and api_key not in item["id"]
+    }
+    return ModelListResponse(models=sorted(models))
+
+
 @router.post("/default/test", response_model=ModelConnectionTestResponse)
 def test_default_model_settings(
-    payload: ModelSettingsUpdateRequest,
+    payload: ModelChatTestRequest,
     auth_context: Annotated[AuthContext, Depends(require_auth_context)],
     session: Session = Depends(get_product_session),
 ) -> ModelConnectionTestResponse:
-    """检测模型配置是否具备可用的基础信息。
-
-    当前版本先做服务端结构校验和密钥存在性检查，避免测试环境依赖真实外网模型。
-    后续如果接入企业模型网关，可以在这里发起轻量 Chat/Embedding ping。
-    """
-
-    provider, _profile = _ensure_default_model_settings(session=session, auth_context=auth_context)
+    """使用当前表单发起一次最小 Chat 请求，不保存表单内容。"""
     started_at = time.perf_counter()
-    checked_at = datetime.now()
-    ok = True
-    message = "模型配置完整，已为后续 Agent 绑定预留。"
-    status_value = "configured"
-
-    if not payload.base_url.strip().startswith(("http://", "https://")):
-        ok = False
-        message = "Base URL 必须以 http:// 或 https:// 开头。"
-        status_value = "failed"
-    elif not payload.chat_model.strip():
-        ok = False
-        message = "Chat 模型不能为空。"
-        status_value = "failed"
-    elif _is_secret_placeholder(payload.api_key) and provider.credential is None:
-        ok = False
-        message = "请先填写并保存模型 API Key。"
-        status_value = "failed"
-
-    ModelSettingsRepository(session).update_provider(
-        provider,
-        status=status_value,
-        last_checked_at=checked_at,
-    )
-    session.commit()
+    model = payload.chat_model.strip()
+    if not model:
+        raise HTTPException(400, detail="请先选择或填写 Chat 模型。")
+    base_url, api_key = _resolve_probe_credentials(payload, auth_context, session)
+    try:
+        result = _probe_provider(
+            "POST", base_url, "chat/completions", api_key,
+            body={"model": model, "messages": [{"role": "user", "content": "Reply OK."}],
+                  "max_tokens": 16},
+        )
+        choices = result.get("choices")
+        if not (isinstance(choices, list) and choices and isinstance(choices[0], dict)
+                and isinstance(choices[0].get("message"), dict)):
+            raise HTTPException(502, detail="Chat 接口未返回 OpenAI 兼容的模型回复。")
+    except HTTPException as exc:
+        ok, message = False, str(exc.detail)
+    else:
+        ok, message = True, "Chat 请求成功。测试未保存模型配置，也未测试 Embedding。"
     return ModelConnectionTestResponse(
-        ok=ok,
-        message=message,
-        status=status_value,
+        ok=ok, message=message, status="configured" if ok else "failed",
         latency_ms=max(1, round((time.perf_counter() - started_at) * 1000)),
-        checked_at=checked_at,
+        checked_at=datetime.now(),
     )
+
+
+def _resolve_probe_credentials(
+    payload: ModelEndpointRequest, auth_context: AuthContext, session: Session,
+) -> tuple[str, str]:
+    raw_url = payload.base_url.strip().rstrip("/")
+    try:
+        url = httpx.URL(raw_url)
+    except httpx.InvalidURL as exc:
+        raise HTTPException(400, detail="Base URL 格式不正确。") from exc
+    if (url.scheme not in {"http", "https"} or not url.host or url.userinfo
+            or "?" in raw_url or "#" in raw_url):
+        raise HTTPException(400, detail="Base URL 必须是 HTTP(S) API 根地址，不能包含账号、查询参数或片段。")
+    if url.path.lower().endswith(("/chat/completions", "/models", "/embeddings", "/responses")):
+        raise HTTPException(400, detail="请填写 API 根地址（例如 https://中转站/v1），不要填具体接口路径。")
+
+    base_url = str(url).rstrip("/")
+    api_key = payload.api_key.get_secret_value().strip() if payload.api_key else ""
+    if _is_secret_placeholder(api_key):
+        provider, _ = _ensure_default_model_settings(session=session, auth_context=auth_context)
+        if base_url != provider.base_url.strip().rstrip("/"):
+            raise HTTPException(400, detail="Base URL 已更改，请输入该地址对应的 API Key 后再测试。")
+        try:
+            api_key = decode_model_api_key(provider.credential) or ""
+        except ValueError:
+            api_key = ""
+    if not api_key:
+        raise HTTPException(400, detail="请先填写模型 API Key。")
+    return base_url, api_key
+
+
+def _probe_provider(
+    method: str, base_url: str, endpoint: str, api_key: str, *, body: dict | None = None,
+) -> dict:
+    try:
+        with httpx.Client(timeout=10.0, follow_redirects=False) as client:
+            response = client.request(method, f"{base_url}/{endpoint}",
+                                      headers={"Authorization": f"Bearer {api_key}"}, json=body)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(502, detail=f"/{endpoint} 请求超时，请检查中转站和网络。") from exc
+    except (httpx.RequestError, ValueError) as exc:
+        raise HTTPException(502, detail=f"/{endpoint} 请求无法发送，请检查地址、API Key 和网络。") from exc
+
+    code = response.status_code
+    if not response.is_success:
+        reason = {
+            401: "请核对 API Key。",
+            403: "请核对 API Key 的权限或中转站访问限制。",
+            404: ("请核对 Base URL；中转站也可能不提供模型列表，可手动填写模型名。"
+                  if endpoint == "models" else "请核对 Base URL 和 Chat 模型 ID，确认中转站支持此接口。"),
+            429: "请检查中转站限流和额度。",
+        }.get(code, "请检查中转站配置和接口兼容性。")
+        raise HTTPException(502, detail=f"/{endpoint} 请求失败（HTTP {code}）。{reason}")
+    try:
+        result = response.json()
+    except ValueError:
+        result = None
+    if not isinstance(result, dict):
+        raise HTTPException(502, detail=f"/{endpoint} 未返回 JSON 对象，请确认填的是 API 地址而非网页地址。")
+    return result
 
 
 @router.get("/agent-bindings", response_model=list[AgentModelBindingPayload])

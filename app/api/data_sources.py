@@ -174,7 +174,7 @@ def _ensure_default_data_source(*, session: Session, auth_context: AuthContext) 
     data_source = repository.create(
         tenant_id=auth_context.tenant.id,
         workspace_id=auth_context.workspace.id,
-        name="示例 MySQL 库",
+        name="示例 MySQL 库" if url.database == "datawhisperer_demo" else (url.database or "默认数据源"),
         db_type=url.get_backend_name() or "mysql",
         host=url.host or "127.0.0.1",
         port=int(url.port or 3306),

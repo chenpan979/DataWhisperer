@@ -1,8 +1,10 @@
+from json import JSONDecodeError
+
 import pytest
 
 from app.tools.insight_tool import generate_insight
 from app.agents.sql_repair import repair_sql
-from app.agents.sql_generation import generate_sql
+from app.agents.sql_generation import SQLGenerationError, generate_sql
 from app.agents.query_planning import generate_query_plan
 
 
@@ -99,6 +101,44 @@ async def test_demo_question_still_calls_sql_generation_model_first() -> None:
     assert generated.sql == "SELECT 1 AS value"
     assert generated.used_fallback is False
     assert llm.messages
+
+class FailingSqlLLM:
+    def __init__(self, result):
+        self.result = result
+
+    async def complete_json(self, messages):
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("result", "message"),
+    [
+        (RuntimeError("private provider response"), "模型调用失败"),
+        (JSONDecodeError("invalid", "private provider response", 0), "不是有效的 JSON"),
+        (None, "没有返回可用内容"),
+        (["SELECT 1"], "缺少有效的 sql"),
+        ({"sql": 123}, "缺少有效的 sql"),
+        ({"sql": "  "}, "缺少有效的 sql"),
+    ],
+)
+async def test_invalid_model_response_does_not_return_demo_sql(result, message) -> None:
+    with pytest.raises(SQLGenerationError, match=message) as error:
+        await generate_sql("哪个地区客单价最高", "", FailingSqlLLM(result))
+    assert "未执行 SQL" in str(error.value)
+    assert "private provider response" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_explicit_demo_fallback_can_still_return_demo_sql() -> None:
+    generated = await generate_sql(
+        "哪个地区客单价最高", "", FailingSqlLLM(None), allow_demo_fallback=True
+    )
+    assert generated.used_fallback
+    assert "avg_order_value" in generated.sql
+
 
 @pytest.mark.asyncio
 async def test_repair_sql_uses_versioned_prompt_template() -> None:
