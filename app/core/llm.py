@@ -52,7 +52,7 @@ class LLMClient:
     async def complete_text(self, messages: list[dict[str, str]]) -> str | None:
         """调用大模型并返回文本。
 
-        如果没有配置 API Key，则返回 None，让上层走本地演示规则。
+        如果没有配置 API Key，则返回 None，由调用方决定如何处理。
         """
 
         if not self._client:

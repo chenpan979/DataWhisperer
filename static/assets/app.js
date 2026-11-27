@@ -213,7 +213,6 @@ const el = {
   runButton: document.querySelector("#runButton"),
   refreshExamplesButton: document.querySelector("#refreshExamplesButton"),
   loadSchemaButton: document.querySelector("#loadSchemaButton"),
-  sceneGrid: document.querySelector("#sceneGrid"),
   exampleList: document.querySelector("#exampleList"),
   schemaBox: document.querySelector("#schemaBox"),
   metricRows: document.querySelector("#metricRows"),
@@ -330,6 +329,9 @@ const el = {
   settingsApiKey: document.querySelector("#settingsApiKey"),
   settingsChatModel: document.querySelector("#settingsChatModel"),
   settingsEmbeddingModel: document.querySelector("#settingsEmbeddingModel"),
+  settingsChatModelList: document.querySelector("#settingsChatModelList"),
+  settingsEmbeddingModelList: document.querySelector("#settingsEmbeddingModelList"),
+  settingsFetchModelsButton: document.querySelector("#settingsFetchModelsButton"),
   settingsTemperature: document.querySelector("#settingsTemperature"),
   settingsMaxTokens: document.querySelector("#settingsMaxTokens"),
   settingsModelHint: document.querySelector("#settingsModelHint"),
@@ -650,6 +652,7 @@ function clearAuthSession() {
   localStorage.removeItem(authStorageKey);
   sessionStorage.removeItem(authStorageKey);
   state.auth = null;
+  renderChatDataSource(null);
   state.consoleBootstrapped = false;
   state.conversations = [];
   state.activeConversationId = null;
@@ -679,7 +682,7 @@ function initializeConsoleData() {
   }
   state.consoleBootstrapped = true;
   checkHealth();
-  loadExamples();
+  loadChatDataSource();
   renderProcessTimeline([]);
   loadManagedFiles("schema");
   loadManagedFiles("rag");
@@ -729,11 +732,40 @@ async function fetchJson(url, options = {}) {
 async function checkHealth() {
   try {
     const data = await fetchJson("/api/health");
-    const modelText = data.llm_enabled ? ` · ${data.llm_model}` : " · 演示模式";
+    const modelText = data.llm_enabled ? ` · ${data.llm_model}` : " · 未配置默认聊天模型";
     setHealth(`服务在线${modelText}`, "ok");
   } catch (error) {
     setHealth("服务异常", "error");
   }
+}
+
+async function loadChatDataSource() {
+  const token = state.auth?.accessToken;
+  if (!token) return;
+  try {
+    const dataSource = await fetchJson("/api/data-sources/default");
+    if (state.auth?.accessToken === token && !state.dataSource) {
+      renderChatDataSource(dataSource);
+    }
+  } catch {
+    // Leave the label unconfirmed; settings can show the detailed request error.
+  }
+}
+
+function renderChatDataSource(dataSource) {
+  const wasDemo = state.dataSource?.database_name === "datawhisperer_demo";
+  state.dataSource = dataSource;
+  const database = dataSource?.database_name;
+  const name = dataSource?.name;
+  const isDemo = database === "datawhisperer_demo";
+  const useName = name && name !== database && (isDemo || name !== "示例 MySQL 库");
+  const label = database ? (useName ? `${name}（${database}）` : database) : "数据源未确认";
+  document.querySelectorAll("[data-chat-datasource]").forEach((element) => {
+    element.textContent = `${element.dataset.prefix || ""}${label}`;
+  });
+  document.querySelector("#demoExamples").hidden = !isDemo;
+  el.refreshExamplesButton.hidden = !isDemo;
+  if (isDemo && !wasDemo) loadExamples();
 }
 
 async function loadExamples() {
@@ -2017,7 +2049,7 @@ function updateConversationMeta(question) {
   if (!conversation.customTitle) {
     conversation.title = title || "新对话";
   }
-  conversation.subtitle = condition === "无" ? "示例 MySQL 库" : condition;
+  conversation.subtitle = condition;
   conversation.preview = question;
   conversation.updatedAt = Date.now();
   el.chatTitle.textContent = conversation.title;
@@ -2106,7 +2138,6 @@ function renderConversationList() {
 function hydrateConversationalCopy() {
   const welcomeTitle = document.querySelector("#analysisView .welcome-card h2");
   const welcomeIntro = document.querySelector("#analysisView .welcome-card > p");
-  const quickTitle = document.querySelector("#analysisView .quick-title");
   const tabLabels = [
     ["chart", "图表"],
     ["table", "详细数据"],
@@ -2119,42 +2150,6 @@ function hydrateConversationalCopy() {
   if (welcomeIntro) {
     welcomeIntro.textContent = "不用写 SQL，用大白话提问，我就能自动连接数据库、生成可视化图表、给出业务分析结论。";
   }
-  if (quickTitle) {
-    quickTitle.textContent = "快速开始分析：";
-  }
-
-  const sceneCards = [
-    {
-      question: "查询最近 6 个月每月销售额趋势",
-      icon: "↗",
-      title: "销售趋势分析",
-      desc: "查看销售额变化与增长",
-    },
-    {
-      question: "查询各商品品类销售额占比",
-      icon: "▦",
-      title: "商品结构分析",
-      desc: "品类占比与销量排名",
-    },
-    {
-      question: "哪个地区客单价最高",
-      icon: "◎",
-      title: "区域表现分析",
-      desc: "地区客单价与订单表现",
-    },
-  ];
-
-  document.querySelectorAll("#analysisView .scene-card").forEach((card, index) => {
-    const config = sceneCards[index];
-    if (!config) {
-      return;
-    }
-    card.dataset.question = config.question;
-    card.querySelector(".scene-icon").textContent = config.icon;
-    card.querySelector("strong").textContent = config.title;
-    card.querySelector("small").textContent = config.desc;
-  });
-
   tabLabels.forEach(([tab, label]) => {
     const button = document.querySelector(`#analysisView .tab[data-tab="${tab}"]`);
     if (button) {
@@ -2737,7 +2732,7 @@ function renderDataSourceState(dataSource) {
 }
 
 function fillDataSourceForm(dataSource) {
-  state.dataSource = dataSource;
+  renderChatDataSource(dataSource);
   const settings = settingsFromDataSource(dataSource);
   writeSettingsDraft(settings);
   setControlValue(el.settingsDatasourceName, settings.datasourceName);
@@ -3173,6 +3168,58 @@ async function saveModelSettings() {
   }
 }
 
+function modelProbeCredentials() {
+  return {
+    base_url: el.settingsBaseUrl?.value.trim() || "",
+    api_key: el.settingsApiKey?.value || "",
+  };
+}
+
+function setModelChoices(models = []) {
+  for (const select of [el.settingsChatModelList, el.settingsEmbeddingModelList]) {
+    if (!select) continue;
+    select.replaceChildren(new Option("从列表选择模型…", ""));
+    for (const model of models) select.add(new Option(model, model));
+    select.hidden = !models.length;
+  }
+}
+
+async function fetchProviderModels() {
+  const button = el.settingsFetchModelsButton;
+  if (!button) return;
+  const credentials = modelProbeCredentials();
+  const unchanged = () => {
+    const current = modelProbeCredentials();
+    return current.base_url === credentials.base_url && current.api_key === credentials.api_key;
+  };
+  button.disabled = true;
+  setModelChoices();
+  setSettingsStatus("正在获取模型列表", "warning");
+  try {
+    const result = await fetchJson("/api/model-settings/default/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
+    if (!unchanged()) {
+      setSettingsStatus("地址或密钥已更改，请重新获取模型列表", "warning");
+      return;
+    }
+    setModelChoices(result.models);
+    const message = result.models.length
+      ? `模型列表请求成功，返回 ${result.models.length} 个模型。列表不区分能力，请按供应商说明选择。`
+      : "模型列表请求成功，但没有返回模型，请手动填写。";
+    if (el.settingsModelHint) el.settingsModelHint.textContent = message;
+    setSettingsStatus(message, result.models.length ? "ok" : "warning");
+  } catch (error) {
+    const message = `获取模型列表失败：${error.message}`;
+    if (el.settingsModelHint) el.settingsModelHint.textContent = message;
+    setSettingsStatus(message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function testModelSettings() {
   if (!el.settingsTestModelButton) {
     return;
@@ -3193,18 +3240,16 @@ async function testModelSettings() {
     const result = await fetchJson("/api/model-settings/default/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(collectModelSettingsPayload()),
+      body: JSON.stringify({ ...modelProbeCredentials(), chat_model: el.settingsChatModel?.value.trim() || "" }),
     });
-    const modelSettings = await fetchJson("/api/model-settings/default");
-    fillModelSettingsForm(modelSettings);
     if (el.settingsModelHint) {
       el.settingsModelHint.textContent = `${result.message} 耗时 ${result.latency_ms}ms。`;
     }
     if (el.settingsModelState) {
-      el.settingsModelState.textContent = result.ok ? "已配置" : "检测失败";
+      el.settingsModelState.textContent = result.ok ? "Chat 测试通过" : "Chat 测试失败";
       el.settingsModelState.className = `state-label ${result.ok ? "ok" : "error"}`;
     }
-    setSettingsStatus(result.ok ? "模型配置正常" : "模型配置异常", result.ok ? "ok" : "error");
+    setSettingsStatus(result.ok ? "Chat 测试通过" : "Chat 测试失败", result.ok ? "ok" : "error");
     if (buttonText) {
       buttonText.textContent = result.ok ? "检测通过" : "检测失败";
       setTimeout(() => {
@@ -5603,7 +5648,7 @@ function normalizeConversation(conversation) {
   return {
     id: conversation.id,
     title: conversation.title || "新对话",
-    subtitle: conversation.subtitle || "等待数据问题",
+    subtitle: conversation.subtitle === "示例 MySQL 库" ? "无" : (conversation.subtitle || "等待数据问题"),
     preview: conversation.preview || "等待数据问题",
     customTitle: Boolean(conversation.customTitle),
     updatedAt: Number(conversation.updatedAt || Date.now()),
@@ -5951,7 +5996,19 @@ function bindEvents() {
   el.settingsTestConnectionButton?.addEventListener("click", testSettingsConnectionApi);
   el.settingsSyncSchemaButton?.addEventListener("click", syncDataSourceSchema);
   el.settingsSaveDatasourceButton?.addEventListener("click", saveDataSourceSettings);
+  el.settingsFetchModelsButton?.addEventListener("click", fetchProviderModels);
   el.settingsTestModelButton?.addEventListener("click", testModelSettings);
+  el.settingsBaseUrl?.addEventListener("input", () => setModelChoices());
+  el.settingsApiKey?.addEventListener("input", () => setModelChoices());
+  for (const [select, input] of [
+    [el.settingsChatModelList, el.settingsChatModel],
+    [el.settingsEmbeddingModelList, el.settingsEmbeddingModel],
+  ]) {
+    select?.addEventListener("change", () => {
+      if (select.value && input) input.value = select.value;
+      select.value = "";
+    });
+  }
   el.settingsSaveModelButton?.addEventListener("click", saveModelSettings);
   el.settingsSaveProfileButton?.addEventListener("click", saveAccountPreferences);
   el.settingsSaveSecurityButton?.addEventListener("click", saveSecurityPolicy);
@@ -5993,14 +6050,6 @@ function bindEvents() {
         runAnalysis();
       }
     }
-  });
-  el.sceneGrid?.addEventListener("click", (event) => {
-    const button = event.target.closest(".scene-card");
-    if (!button || el.runButton.disabled) {
-      return;
-    }
-    el.questionInput.value = button.dataset.question || "";
-    runAnalysis();
   });
   el.conversationList?.addEventListener("click", (event) => {
     const actionButton = event.target.closest("[data-conversation-action]");

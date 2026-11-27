@@ -1,4 +1,4 @@
-const appVersion = "4.2.3";
+const appVersion = "4.2.3-model-actions";
 
 async function loadFragment(mountNode) {
   const fragmentUrl = mountNode.dataset.fragment;

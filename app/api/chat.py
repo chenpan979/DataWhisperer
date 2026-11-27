@@ -8,6 +8,7 @@ from app.api.auth import AuthContext, require_auth_context
 from app.api.model_settings import _ensure_default_model_settings
 from app.api.security_policies import build_query_security_policy, ensure_default_security_policy
 from app.agents.orchestrator import DataAnalysisOrchestrator
+from app.agents.sql_generation import SQLGenerationError
 from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.llm import LLMClient, get_llm_client
@@ -63,6 +64,8 @@ async def query_data(
         return await orchestrator.run(request)
     except HTTPException:
         raise
+    except SQLGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - depends on external services

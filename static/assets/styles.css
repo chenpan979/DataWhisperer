@@ -5696,6 +5696,45 @@ td {
   width: 100%;
 }
 
+.settings-model-control {
+  display: flex;
+  min-width: 0;
+}
+
+.settings-model-control input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-model-control:has(select:not([hidden])) input {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.settings-model-control select {
+  flex: 0 0 42px;
+  min-width: 0;
+  width: 42px;
+  margin-inline-start: -1px;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  padding: 0 7px;
+  color: transparent;
+  cursor: pointer;
+}
+
+.settings-model-control select[hidden] {
+  display: none;
+}
+
+.settings-model-control select option {
+  color: #10231f;
+}
+
+.settings-model-control :is(input, select):focus {
+  z-index: 1;
+}
+
 .settings-field textarea {
   background: #f8fafc;
   border: 1px solid #d7e2df;
@@ -5717,6 +5756,23 @@ td {
   background: #ffffff;
   border-color: #14b8a6;
   box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.08);
+}
+
+.settings-field .settings-model-control select,
+.settings-field .settings-model-control select:focus {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23475569' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+}
+
+@media (forced-colors: active) {
+  .settings-field .settings-model-control select,
+  .settings-field .settings-model-control select:focus {
+    appearance: auto;
+    background-image: none;
+  }
 }
 
 .settings-password {

@@ -77,7 +77,7 @@
                 <div>
                   <div class="chat-title-row">
                     <h2 id="chatTitle">新对话</h2>
-                    <span>示例 MySQL 库</span>
+                    <span data-chat-datasource>数据源未确认</span>
                   </div>
                   <p>像和数据分析师聊天一样提问，系统会自动生成 SQL、查询数据并整理结论。</p>
                 </div>
@@ -98,30 +98,15 @@
                     <div class="chat-bubble welcome-card">
                       <h2>你好，我是你的专属数据分析助手</h2>
                       <p>不用写 SQL，用大白话提问，我会自动连接数据库、生成可视化图表，并给出业务分析结论。</p>
-                      <div class="scene-grid" id="sceneGrid">
-                        <button class="scene-card" type="button" data-question="查询最近 6 个月每月销售额趋势">
-                          <span class="scene-icon">↗</span>
-                          <strong>销售趋势分析</strong>
-                          <small>查看销售额变化与增长</small>
-                        </button>
-                        <button class="scene-card" type="button" data-question="查询各商品品类销售额占比">
-                          <span class="scene-icon">▦</span>
-                          <strong>商品结构分析</strong>
-                          <small>品类占比与销售贡献</small>
-                        </button>
-                        <button class="scene-card" type="button" data-question="哪个地区客单价最高">
-                          <span class="scene-icon">◎</span>
-                          <strong>区域表现分析</strong>
-                          <small>地区客单价和订单表现</small>
-                        </button>
-                      </div>
                       <div class="welcome-meta">
-                        <span>当前连接：示例 MySQL 库</span>
-                        <button class="link-button" id="refreshExamplesButton" type="button">刷新示例</button>
+                        <span data-chat-datasource data-prefix="当前连接：">当前连接：数据源未确认</span>
+                        <button class="link-button" id="refreshExamplesButton" type="button" hidden>刷新示例</button>
                         <button class="link-button" id="loadSchemaButton" type="button">读取表结构</button>
                       </div>
-                      <p class="quick-title">也可以直接试试这些问题：</p>
-                      <div class="example-list welcome-examples" id="exampleList"></div>
+                      <div id="demoExamples" hidden>
+                        <p>演示库示例：</p>
+                        <div class="example-list welcome-examples" id="exampleList"></div>
+                      </div>
                       <div class="schema-box compact-schema" id="schemaBox">未加载表结构。</div>
                     </div>
                   </div>
@@ -329,7 +314,7 @@
                 </div>
                 <div class="composer-hint">
                   <span>按 Enter 发送，Shift + Enter 换行</span>
-                  <span>当前连接：示例 MySQL 库</span>
+                  <span data-chat-datasource data-prefix="当前连接：">当前连接：数据源未确认</span>
                 </div>
               </div>
             </div>
@@ -983,14 +968,20 @@
                       <span>API Key</span>
                       <input id="settingsApiKey" type="password" value="******" autocomplete="off" />
                     </label>
-                    <label class="settings-field">
-                      <span>Chat 模型</span>
-                      <input id="settingsChatModel" type="text" value="qwen-plus" />
-                    </label>
-                    <label class="settings-field">
-                      <span>Embedding 模型</span>
-                      <input id="settingsEmbeddingModel" type="text" value="text-embedding-v4" />
-                    </label>
+                    <div class="settings-field">
+                      <label for="settingsChatModel"><span>Chat 模型</span></label>
+                      <div class="settings-model-control">
+                        <input id="settingsChatModel" type="text" value="qwen-plus" />
+                        <select id="settingsChatModelList" aria-label="从列表选择 Chat 模型" title="选择 Chat 模型" hidden></select>
+                      </div>
+                    </div>
+                    <div class="settings-field">
+                      <label for="settingsEmbeddingModel"><span>Embedding 模型</span></label>
+                      <div class="settings-model-control">
+                        <input id="settingsEmbeddingModel" type="text" value="text-embedding-v4" />
+                        <select id="settingsEmbeddingModelList" aria-label="从列表选择 Embedding 模型" title="选择 Embedding 模型" hidden></select>
+                      </div>
+                    </div>
                     <label class="settings-field">
                       <span>Temperature</span>
                       <input id="settingsTemperature" type="number" min="0" max="2" step="0.01" value="0.1" />
@@ -999,6 +990,17 @@
                       <span>最大 Token</span>
                       <input id="settingsMaxTokens" type="number" min="128" max="128000" step="128" value="2048" />
                     </label>
+                  </div>
+                  <div class="settings-card-actions">
+                    <p id="settingsModelHint" aria-live="polite">填写 API 根地址和 API Key 后，可先获取模型列表，再测试 Chat。</p>
+                    <button class="secondary-button compact-button" id="settingsFetchModelsButton" type="button">
+                      <svg><use href="#icon-refresh"></use></svg>
+                      <span>获取模型列表</span>
+                    </button>
+                    <button class="secondary-button compact-button" id="settingsTestModelButton" type="button">
+                      <svg><use href="#icon-refresh"></use></svg>
+                      <span>测试 Chat</span>
+                    </button>
                   </div>
                   <div class="settings-agent-bindings">
                     <div class="settings-subsection-title">
@@ -1010,11 +1012,6 @@
                     </div>
                   </div>
                   <div class="settings-card-actions">
-                    <p id="settingsModelHint">模型配置会保存到产品管理库，API Key 只在后端保留脱敏状态。</p>
-                    <button class="secondary-button compact-button" id="settingsTestModelButton" type="button">
-                      <svg><use href="#icon-refresh"></use></svg>
-                      <span>测试配置</span>
-                    </button>
                     <button class="primary-button compact-button" id="settingsSaveModelButton" type="button">
                       <svg><use href="#icon-check"></use></svg>
                       <span>保存模型配置</span>

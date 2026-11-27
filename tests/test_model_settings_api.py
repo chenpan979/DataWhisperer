@@ -1,6 +1,8 @@
 from collections.abc import Iterator
+import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -46,6 +48,7 @@ def model_settings_client() -> Iterator[tuple[TestClient, sessionmaker[Session]]
 
 def test_model_settings_can_be_loaded_saved_tested_and_bound(
     model_settings_client: tuple[TestClient, sessionmaker[Session]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证系统设置里的模型配置已经从静态草稿升级为后端 API。"""
 
@@ -82,6 +85,14 @@ def test_model_settings_can_be_loaded_saved_tested_and_bound(
     assert updated["profile"]["chat_model"] == "qwen-max"
     assert updated["profile"]["max_tokens"] == 4096
 
+    def upstream(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/compatible-mode/v1/chat/completions"
+        assert request.headers["Authorization"] == "Bearer sk-test-model-key"
+        assert json.loads(request.content)["model"] == "qwen-max"
+        return httpx.Response(200, json={"choices": [{"message": {"content": "OK"}}]})
+
+    _mock_provider(monkeypatch, upstream)
     test_response = client.post(
         "/api/model-settings/default/test",
         headers=headers,
@@ -146,6 +157,57 @@ def test_model_settings_can_be_loaded_saved_tested_and_bound(
         assert provider.credential.encrypted_api_key.startswith("local-demo:")
         assert repository.get_default_profile(workspace_id=1).chat_model == "qwen-max"
         assert len(repository.list_bindings(workspace_id=1)) == 7
+
+
+def _mock_provider(monkeypatch, handler) -> None:
+    client_type = httpx.Client
+    monkeypatch.setattr(
+        httpx, "Client",
+        lambda **kwargs: client_type(transport=httpx.MockTransport(handler), **kwargs),
+    )
+
+
+def test_lists_models_using_unsaved_credentials(model_settings_client, monkeypatch) -> None:
+    client, session_factory = model_settings_client
+    headers = _seed_product_workspace_and_login(client, session_factory)
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert str(request.url) == "https://relay.example/custom/v1/models"
+        assert request.headers["Authorization"] == "Bearer fake-secret"
+        return httpx.Response(200, json={"data": [
+            {"id": "vendor-chat"}, {"id": "embed-v1"}, {"id": "vendor-chat"},
+            {"id": "fake-secret"}, {"id": 7},
+        ]})
+
+    _mock_provider(monkeypatch, upstream)
+    credentials = {"base_url": "https://relay.example/custom/v1/", "api_key": "fake-secret"}
+    response = client.post("/api/model-settings/default/models", headers=headers, json=credentials)
+    assert response.status_code == 200
+    assert response.json() == {"models": ["embed-v1", "vendor-chat"]}
+    with session_factory() as session:
+        assert ModelSettingsRepository(session).get_default_provider(workspace_id=1) is None
+
+    response = client.post("/api/model-settings/default/models", headers=headers,
+                           json={**credentials, "api_key": "******"})
+    assert response.status_code == 400
+    assert "Base URL 已更改" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("code", [401, 404])
+def test_reports_upstream_failure_per_endpoint(model_settings_client, monkeypatch, code) -> None:
+    client, session_factory = model_settings_client
+    headers = _seed_product_workspace_and_login(client, session_factory)
+    _mock_provider(monkeypatch, lambda request: httpx.Response(code, text="private-provider-error"))
+    credentials = {"base_url": "https://relay.example/v1", "api_key": "fake-secret"}
+    models = client.post("/api/model-settings/default/models", headers=headers, json=credentials)
+    chat = client.post("/api/model-settings/default/test", headers=headers,
+                       json={**credentials, "chat_model": "vendor-chat"})
+    assert models.status_code == 502
+    assert f"/models 请求失败（HTTP {code}）" in models.json()["detail"]
+    assert chat.status_code == 200 and chat.json()["ok"] is False
+    assert f"/chat/completions 请求失败（HTTP {code}）" in chat.json()["message"]
+    assert "private-provider-error" not in models.text + chat.text
 
 
 def test_model_settings_backfills_env_api_key_for_existing_provider(

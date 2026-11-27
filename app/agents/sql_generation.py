@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any
+
+from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from app.core.prompts import DEFAULT_PROMPT_VERSION, PromptRegistry, get_prompt_registry
 
@@ -38,6 +41,10 @@ class GeneratedSQL:
     prompt_version: str | None = None
 
 
+class SQLGenerationError(RuntimeError):
+    """A SQL generation failure safe to display without provider response details."""
+
+
 async def generate_sql(
     question: str,
     schema_prompt: str,
@@ -45,6 +52,8 @@ async def generate_sql(
     metric_context: str = "未检索到相关业务指标口径。",
     prompt_registry: PromptRegistry | None = None,
     prompt_version: str = DEFAULT_PROMPT_VERSION,
+    *,
+    allow_demo_fallback: bool = False,
 ) -> GeneratedSQL:
     """根据自然语言问题和 schema 上下文生成 MySQL SQL。"""
 
@@ -60,16 +69,34 @@ async def generate_sql(
     )
     try:
         payload = await llm.complete_json(rendered_prompt.messages)
+    except JSONDecodeError:
+        failure = "模型回复不是有效的 JSON。"
+    except APITimeoutError:
+        failure = "模型请求超时。请检查中转站是否可用。"
+    except APIConnectionError:
+        failure = "无法连接模型服务。请检查中转站地址和网络。"
+    except APIStatusError as exc:
+        failure = f"模型请求失败（HTTP {exc.status_code}）。请检查中转站地址、API Key 和模型名。"
     except Exception:
-        payload = None
-    if payload and payload.get("sql"):
-        return GeneratedSQL(
-            sql=str(payload["sql"]),
-            explanation=str(payload.get("explanation", "")),
-            prompt_id=rendered_prompt.prompt_id,
-            prompt_version=rendered_prompt.version,
-        )
-    return fallback_sql(question)
+        failure = "模型调用失败。请检查 SQL 生成 Agent 的中转站配置。"
+    else:
+        sql = payload.get("sql") if isinstance(payload, dict) else None
+        if isinstance(sql, str) and sql.strip():
+            return GeneratedSQL(
+                sql=sql.strip(),
+                explanation=str(payload.get("explanation", "")),
+                prompt_id=rendered_prompt.prompt_id,
+                prompt_version=rendered_prompt.version,
+            )
+        if getattr(llm, "enabled", None) is False:
+            failure = "SQL 生成 Agent 未配置可用的 API Key。"
+        elif payload is None:
+            failure = "模型没有返回可用内容。"
+        else:
+            failure = "模型回复缺少有效的 sql 字符串。"
+    if allow_demo_fallback:
+        return fallback_sql(question)
+    raise SQLGenerationError(f"SQL 生成失败：{failure} 未执行 SQL。")
 
 
 def try_fallback_sql(question: str) -> GeneratedSQL | None:
@@ -265,9 +292,14 @@ class SQLGenerationAgent:
             state.schema_prompt,
             state.llm_for("sql_agent"),
             metric_context=state.retrieval_context,
+            allow_demo_fallback=(
+                state.settings.enable_demo_sql_fallback
+                and state.engine.url.get_backend_name() == "mysql"
+                and state.engine.url.database == "datawhisperer_demo"
+            ),
         )
         if state.generated_sql.used_fallback:
-            state.warnings.append("?? SQL ????????????????????????")
+            state.warnings.append("模型未生成 SQL，已在演示库中使用演示查询。")
         state.record_prompt_version(state.generated_sql)
         detail = state.generated_sql.explanation
         if state.generated_sql.prompt_id and state.generated_sql.prompt_version:

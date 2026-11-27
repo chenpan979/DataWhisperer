@@ -8,7 +8,10 @@ from sqlalchemy.pool import StaticPool
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
+import app.agents.orchestrator as orchestrator_module  # noqa: E402
 import app.api.chat as chat_api  # noqa: E402
+from app.agents.sql_generation import SQLGenerationAgent  # noqa: E402
+from app.core.config import Settings  # noqa: E402
 from app.core.product_database import ProductBase, get_product_session  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.models.query import QueryResponse  # noqa: E402
@@ -129,6 +132,38 @@ def test_chat_query_keeps_env_database_fallback_without_login(
     assert response.status_code == 200
     assert captured_engines[-1] is fallback_engine
     assert captured_scopes[-1] is None
+
+
+def test_business_query_stops_before_execution_even_when_demo_fallback_is_enabled(
+    chat_client, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, *_ = chat_client
+    business_engine = create_engine("mysql+pymysql://localhost/business_db")
+
+    class BrokenLLM:
+        async def complete_json(self, messages):
+            raise RuntimeError("private provider response")
+
+    class MustNotExecute:
+        async def run(self, state):
+            pytest.fail("SQL generation failure must stop the pipeline before execution")
+
+    monkeypatch.setattr(orchestrator_module, "get_settings", lambda: Settings(enable_demo_sql_fallback=True))
+    monkeypatch.setattr(chat_api, "get_engine", lambda: business_engine)
+    monkeypatch.setattr(chat_api, "get_llm_client", BrokenLLM)
+    monkeypatch.setattr(
+        chat_api, "DataAnalysisOrchestrator",
+        lambda **kwargs: orchestrator_module.DataAnalysisOrchestrator(
+            **kwargs, agents=[SQLGenerationAgent(), MustNotExecute()]
+        ),
+    )
+
+    response = client.post("/api/chat/query", json={"question": "哪个地区客单价最高"})
+
+    assert response.status_code == 502
+    assert "模型调用失败" in response.json()["detail"]
+    assert "未执行 SQL" in response.json()["detail"]
+    assert "private provider response" not in response.text
 
 
 def _seed_product_workspace_and_login(

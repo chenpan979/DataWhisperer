@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class ModelProviderPayload(BaseModel):
@@ -72,6 +72,19 @@ class ModelSettingsUpdateRequest(BaseModel):
     embedding_model: str | None = Field(default=None, max_length=128)
     temperature: float = Field(default=0.1, ge=0, le=2)
     max_tokens: int = Field(default=2048, ge=128, le=128000)
+
+
+class ModelEndpointRequest(BaseModel):
+    base_url: str = Field(min_length=1, max_length=512)
+    api_key: SecretStr | None = Field(default=None, max_length=1024)
+
+
+class ModelChatTestRequest(ModelEndpointRequest):
+    chat_model: str = Field(min_length=1, max_length=128)
+
+
+class ModelListResponse(BaseModel):
+    models: list[str]
 
 
 class ModelConnectionTestResponse(BaseModel):
